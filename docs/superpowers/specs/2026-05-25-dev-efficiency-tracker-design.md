@@ -91,7 +91,7 @@
 | date | date | 当天（按本地时区归桶） |
 | tool | enum(claude-code, codex, cursor) | 工具 |
 | model | string | 模型名 |
-| project | string? | 脱敏后的项目哈希（可空） |
+| project | string | 脱敏后的项目哈希；未知时存空串 `""`（非空，保证唯一键 upsert 可靠） |
 | inputTokens | bigint | |
 | outputTokens | bigint | |
 | cacheCreationTokens | bigint | |
@@ -102,7 +102,7 @@
 | source | enum(auto, manual) | 自动解析 / 手动填报 |
 | updatedAt | datetime | |
 
-- **唯一键**：`(userId, date, tool, model, project, source)` → 上传走 upsert，**重复上传不重复计数**（幂等）。
+- **唯一键**：`(userId, date, tool, model, project, source)` → 上传走 upsert，**重复上传不重复计数**（幂等）。`project` 非空（未知存 `""`），避免 PostgreSQL 唯一约束中 `NULL` 互不相等导致去重失效。
 
 ## 4. 上传 API 契约
 
@@ -117,7 +117,7 @@
         "date": "2026-05-25",
         "tool": "claude-code",
         "model": "claude-opus-4-7",
-        "project": "<sha256-hash-or-null>",
+        "project": "<sha256-hash-or-empty-string>",
         "inputTokens": 6,
         "outputTokens": 681,
         "cacheCreationTokens": 13857,
