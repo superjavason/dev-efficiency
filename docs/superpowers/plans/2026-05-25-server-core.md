@@ -1576,7 +1576,8 @@ git commit -m "feat: add API routes for register/login/logout/usage/me"
 
 ```typescript
 import { PrismaClient } from "@prisma/client";
-import { hash } from "@node-rs/argon2";
+// 相对导入：seed 经 `tsx` 运行，tsx 不解析 tsconfig 的 `@/` 别名
+import { hashPassword } from "../src/lib/auth/password";
 
 const prisma = new PrismaClient();
 
@@ -1597,7 +1598,7 @@ async function main() {
     data: {
       email,
       name,
-      passwordHash: await hash(password),
+      passwordHash: await hashPassword(password),
       role: "admin",
       status: "approved",
     },
