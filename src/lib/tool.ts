@@ -16,7 +16,7 @@ const enumToApi: Record<Tool, ApiTool> = {
 };
 
 export function toolFromApi(s: string): Tool | null {
-  return s in apiToEnum ? apiToEnum[s as ApiTool] : null;
+  return Object.hasOwn(apiToEnum, s) ? apiToEnum[s as ApiTool] : null;
 }
 
 export function toolToApi(t: Tool): ApiTool {

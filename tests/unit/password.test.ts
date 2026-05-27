@@ -12,4 +12,8 @@ describe("password", () => {
     const hash = await hashPassword("s3cret-pass");
     expect(await verifyPassword(hash, "wrong")).toBe(false);
   });
+
+  it("returns false for a malformed stored hash", async () => {
+    expect(await verifyPassword("not-a-valid-hash", "anything")).toBe(false);
+  });
 });

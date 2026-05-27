@@ -51,4 +51,11 @@ describe("usagePayloadSchema", () => {
   it("rejects empty records array", () => {
     expect(usagePayloadSchema.safeParse({ records: [] }).success).toBe(false);
   });
+
+  it("rejects an impossible calendar date", () => {
+    const r = usagePayloadSchema.safeParse({
+      records: [{ ...validRecord, date: "2026-13-99" }],
+    });
+    expect(r.success).toBe(false);
+  });
 });

@@ -4,7 +4,13 @@ import { API_TOOLS } from "@/lib/tool";
 const tokenCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
 export const usageRecordSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD")
+    .refine((s) => {
+      const d = new Date(`${s}T00:00:00.000Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+    }, "date must be a valid calendar date"),
   tool: z.enum(API_TOOLS),
   model: z.string().min(1).max(100),
   project: z.string().max(128).default(""),

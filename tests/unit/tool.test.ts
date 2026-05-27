@@ -10,10 +10,14 @@ describe("tool mapping", () => {
 
   it("returns null for unknown tool", () => {
     expect(toolFromApi("vim")).toBeNull();
+    expect(toolFromApi("constructor")).toBeNull();
+    expect(toolFromApi("toString")).toBeNull();
   });
 
   it("maps prisma enum back to api string", () => {
     expect(toolToApi("claude_code")).toBe("claude-code");
+    expect(toolToApi("codex")).toBe("codex");
+    expect(toolToApi("cursor")).toBe("cursor");
   });
 
   it("lists supported api tools", () => {
