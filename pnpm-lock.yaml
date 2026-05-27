@@ -20,12 +20,18 @@ importers:
       next:
         specifier: ^15.1.4
         version: 15.5.18(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      prisma:
+        specifier: ^6.2.1
+        version: 6.19.3(typescript@5.9.3)
       react:
         specifier: ^19.0.0
         version: 19.2.6
       react-dom:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.3
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -39,12 +45,6 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
-      prisma:
-        specifier: ^6.2.1
-        version: 6.19.3(typescript@5.9.3)
-      tsx:
-        specifier: ^4.19.2
-        version: 4.22.3
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
