@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  member
+}
+
+enum UserStatus {
+  pending
+  approved
+  disabled
+}
+
+enum Tool {
+  claude_code @map("claude-code")
+  codex       @map("codex")
+  cursor      @map("cursor")
+}
+
+enum UsageSource {
+  auto
+  manual
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         Role       @default(member)
+  status       UserStatus @default(pending)
+  createdAt    DateTime   @default(now())
+
+  tokens         AuthToken[]
+  usageRecords   UsageRecord[]
+  invitesCreated InviteCode[] @relation("InviteCreatedBy")
+  inviteUsed     InviteCode?  @relation("InviteUsedBy")
+}
+
+model InviteCode {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  createdById String
+  createdBy   User      @relation("InviteCreatedBy", fields: [createdById], references: [id])
+  usedById    String?   @unique
+  usedBy      User?     @relation("InviteUsedBy", fields: [usedById], references: [id])
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model AuthToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  name       String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+}
+
+model UsageRecord {
+  id                  String      @id @default(cuid())
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                DateTime    @db.Date
+  tool                Tool
+  model               String
+  project             String      @default("")
+  inputTokens         BigInt      @default(0)
+  outputTokens        BigInt      @default(0)
+  cacheCreationTokens BigInt      @default(0)
+  cacheReadTokens     BigInt      @default(0)
+  totalTokens         BigInt      @default(0)
+  sessionCount        Int         @default(0)
+  messageCount        Int         @default(0)
+  source              UsageSource
+  updatedAt           DateTime    @updatedAt
+
+  @@unique([userId, date, tool, model, project, source])
+  @@index([date])
+  @@index([userId, date])
+}
