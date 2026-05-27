@@ -203,10 +203,10 @@ config({ path: ".env.test" });
 - [ ] **Step 7: 创建 `.env.example`**
 
 ```bash
-# 应用数据库（docker-compose 中的 db 服务）
-DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency?schema=public"
+# 本地开发数据库（docker 容器映射到主机 5433，避开本机已占用的 5432）
+DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency?schema=public"
 # 测试库（放入 .env.test，指向独立 database）
-# DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency_test?schema=public"
+# DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency_test?schema=public"
 
 # 首次启动 seed 的管理员账号
 ADMIN_EMAIL="admin@example.com"
@@ -332,19 +332,20 @@ model UsageRecord {
 
 - [ ] **Step 2: 准备本地数据库**
 
-先创建 `docker-compose.yml` 的 db 部分（完整版在 Task 11，这里先起一个临时 db 即可），或本机已有 Postgres。最简单：
+本机 5432 已被占用，故 docker 容器映射到主机 **5433**。
 Run:
 ```bash
-docker run -d --name de-pg -e POSTGRES_USER=devuser -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=dev_efficiency -p 5432:5432 postgres:16
+docker run -d --name de-pg -e POSTGRES_USER=devuser -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=dev_efficiency -p 5433:5432 postgres:16
 ```
-然后创建测试库：
+等待几秒待其就绪，然后创建测试库：
 ```bash
+sleep 5
 docker exec de-pg psql -U devuser -d dev_efficiency -c "CREATE DATABASE dev_efficiency_test;"
 ```
 复制 env：
 ```bash
 cp .env.example .env
-printf 'DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency_test?schema=public"\n' > .env.test
+printf 'DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency_test?schema=public"\n' > .env.test
 ```
 Expected: Postgres 容器运行，两个 database 存在。
 
