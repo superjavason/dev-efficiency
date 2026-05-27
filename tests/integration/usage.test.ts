@@ -3,7 +3,7 @@ import { prisma, resetDb } from "../helpers/db";
 import { ingestUsage } from "@/lib/services/usage";
 import type { UsageRecordInput } from "@/lib/validation/usage";
 import { POST as usagePost } from "@/app/api/v1/usage/route";
-import { GET as mePost } from "@/app/api/v1/me/route";
+import { GET as meGet } from "@/app/api/v1/me/route";
 import { generateToken, hashToken } from "@/lib/auth/token";
 
 async function makeUser() {
@@ -83,7 +83,13 @@ describe("usage route handler", () => {
   }
 
   it("401 without token", async () => {
-    const res = await usagePost(new Request("http://t/api/v1/usage", { method: "POST", body: "{}" }));
+    const res = await usagePost(
+      new Request("http://t/api/v1/usage", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
     expect(res.status).toBe(401);
   });
 
@@ -102,7 +108,7 @@ describe("usage route handler", () => {
 
   it("GET /me returns the user", async () => {
     const raw = await approvedUserWithToken();
-    const res = await mePost(
+    const res = await meGet(
       new Request("http://t/api/v1/me", { headers: { authorization: `Bearer ${raw}` } }),
     );
     expect(res.status).toBe(200);
