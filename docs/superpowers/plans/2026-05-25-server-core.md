@@ -1201,7 +1201,7 @@ Expected: FAIL（service 不存在）。
 - [ ] **Step 4: 实现 `src/lib/services/auth.ts`**
 
 ```typescript
-import type { PrismaClient, User } from "@prisma/client";
+import { Prisma, type PrismaClient, type User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { generateToken, hashToken } from "@/lib/auth/token";
 import type { RegisterInput } from "@/lib/validation/auth";
@@ -1221,13 +1221,14 @@ export interface RegisterResult {
   token: string | null; // 仅在即时审批（有效邀请码）时返回明文 token
 }
 
+// 接受事务客户端，使其可在 $transaction 内复用
 async function issueTokenFor(
-  prisma: PrismaClient,
+  client: Prisma.TransactionClient,
   userId: string,
   name = "default",
 ): Promise<string> {
   const raw = generateToken();
-  await prisma.authToken.create({
+  await client.authToken.create({
     data: { userId, tokenHash: hashToken(raw), name },
   });
   return raw;
@@ -1254,25 +1255,31 @@ export async function registerUser(
     inviteId = code!.id;
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      name: input.name,
-      passwordHash: await hashPassword(input.password),
-      status: approveImmediately ? "approved" : "pending",
-    },
-  });
+  // 在开启事务前完成 argon2 哈希，避免哈希期间长时间持有事务
+  const passwordHash = await hashPassword(input.password);
 
-  let token: string | null = null;
-  if (approveImmediately) {
-    await prisma.inviteCode.update({
-      where: { id: inviteId! },
-      data: { usedById: user.id },
+  // 三次写入（建用户 / 消费邀请码 / 签发 token）置于一个事务，保证原子性
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash,
+        status: approveImmediately ? "approved" : "pending",
+      },
     });
-    token = await issueTokenFor(prisma, user.id);
-  }
 
-  return { user, token };
+    let token: string | null = null;
+    if (approveImmediately) {
+      await tx.inviteCode.update({
+        where: { id: inviteId! },
+        data: { usedById: user.id },
+      });
+      token = await issueTokenFor(tx, user.id);
+    }
+
+    return { user, token };
+  });
 }
 
 export async function approveUser(
@@ -1281,12 +1288,15 @@ export async function approveUser(
 ): Promise<{ user: User; token: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AuthError("user not found", "NOT_FOUND");
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { status: "approved" },
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
+      where: { id: userId },
+      data: { status: "approved" },
+    });
+    const token = await issueTokenFor(tx, userId);
+    return { user: updated, token };
   });
-  const token = await issueTokenFor(prisma, userId);
-  return { user: updated, token };
 }
 
 export async function authenticate(
