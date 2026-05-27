@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { hash } from "@node-rs/argon2";
+import { hashPassword } from "../src/lib/auth/password";
 
 const prisma = new PrismaClient();
 
@@ -20,7 +20,7 @@ async function main() {
     data: {
       email,
       name,
-      passwordHash: await hash(password),
+      passwordHash: await hashPassword(password),
       role: "admin",
       status: "approved",
     },

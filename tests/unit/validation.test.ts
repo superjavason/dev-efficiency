@@ -58,4 +58,13 @@ describe("usagePayloadSchema", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("strips unknown fields like prompt/code (privacy invariant)", () => {
+    const parsed = usagePayloadSchema.parse({
+      records: [{ ...validRecord, prompt: "secret prompt", code: "rm -rf /", fileContents: "x" }],
+    });
+    expect(parsed.records[0]).not.toHaveProperty("prompt");
+    expect(parsed.records[0]).not.toHaveProperty("code");
+    expect(parsed.records[0]).not.toHaveProperty("fileContents");
+  });
 });
