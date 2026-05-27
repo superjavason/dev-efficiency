@@ -1,4 +1,4 @@
-import type { PrismaClient, User } from "@prisma/client";
+import { Prisma, type PrismaClient, type User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { generateToken, hashToken } from "@/lib/auth/token";
 import type { RegisterInput } from "@/lib/validation/auth";
@@ -19,12 +19,12 @@ export interface RegisterResult {
 }
 
 async function issueTokenFor(
-  prisma: PrismaClient,
+  client: Prisma.TransactionClient,
   userId: string,
   name = "default",
 ): Promise<string> {
   const raw = generateToken();
-  await prisma.authToken.create({
+  await client.authToken.create({
     data: { userId, tokenHash: hashToken(raw), name },
   });
   return raw;
@@ -51,25 +51,30 @@ export async function registerUser(
     inviteId = code!.id;
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      name: input.name,
-      passwordHash: await hashPassword(input.password),
-      status: approveImmediately ? "approved" : "pending",
-    },
-  });
+  // Hash before opening the transaction so argon2 doesn't hold the tx open.
+  const passwordHash = await hashPassword(input.password);
 
-  let token: string | null = null;
-  if (approveImmediately) {
-    await prisma.inviteCode.update({
-      where: { id: inviteId! },
-      data: { usedById: user.id },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash,
+        status: approveImmediately ? "approved" : "pending",
+      },
     });
-    token = await issueTokenFor(prisma, user.id);
-  }
 
-  return { user, token };
+    let token: string | null = null;
+    if (approveImmediately) {
+      await tx.inviteCode.update({
+        where: { id: inviteId! },
+        data: { usedById: user.id },
+      });
+      token = await issueTokenFor(tx, user.id);
+    }
+
+    return { user, token };
+  });
 }
 
 export async function approveUser(
@@ -78,12 +83,15 @@ export async function approveUser(
 ): Promise<{ user: User; token: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AuthError("user not found", "NOT_FOUND");
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { status: "approved" },
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
+      where: { id: userId },
+      data: { status: "approved" },
+    });
+    const token = await issueTokenFor(tx, userId);
+    return { user: updated, token };
   });
-  const token = await issueTokenFor(prisma, userId);
-  return { user: updated, token };
 }
 
 export async function authenticate(
