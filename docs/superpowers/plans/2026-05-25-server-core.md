@@ -1566,8 +1566,11 @@ git commit -m "feat: add API routes for register/login/logout/usage/me"
 
 ## Task 12: admin seed + docker-compose + Dockerfile
 
+> 实现说明（与初稿的差异）：初稿计划用 Next.js `output: "standalone"` 多阶段镜像，但 standalone 的精简 `node_modules` **不含 `prisma` CLI 与 `tsx`**，容器启动时的 `prisma migrate deploy` / `db:seed` 会失败。改为**单阶段、全依赖镜像 + `next start`**（内部工具镜像体积非关键，换取可靠与 KISS）。同时：移除 `next.config.ts` 的 `output: "standalone"`；新增根 `layout.tsx`/`page.tsx`（`next build` 需要）与 `public/.gitkeep`；用 `packageManager` 钉死 pnpm 版本使 host 与容器一致（避免 corepack 在容器内拉到 pnpm 11 导致构建脚本允许清单配置分裂）。
+
 **Files:**
-- Create: `prisma/seed.ts`, `docker-compose.yml`, `Dockerfile`, `.dockerignore`
+- Create: `prisma/seed.ts`, `src/app/layout.tsx`, `src/app/page.tsx`, `public/.gitkeep`, `Dockerfile`, `.dockerignore`, `docker-compose.yml`
+- Modify: `next.config.ts`（移除 standalone）、`package.json`（加 `packageManager`，并把 `prisma`/`tsx` 移入 dependencies）
 
 - [ ] **Step 1: 实现 `prisma/seed.ts`**
 
@@ -1605,40 +1608,65 @@ async function main() {
 main().finally(() => prisma.$disconnect());
 ```
 
-- [ ] **Step 2: 验证 seed（对本地 dev 库）**
+- [ ] **Step 2: 根 `layout.tsx` / `page.tsx`（`next build` 需要）与 `public/.gitkeep`**
 
-Run: `pnpm db:seed`
-Expected: 打印「已创建 admin: ...」（用 `.env` 里的 ADMIN_EMAIL）。再次运行打印「已存在，跳过」。
+`src/app/layout.tsx`：
+```tsx
+import type { ReactNode } from "react";
 
-- [ ] **Step 3: 创建 `Dockerfile`（Next.js standalone）**
+export const metadata = { title: "Dev Efficiency" };
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="zh">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+`src/app/page.tsx`：
+```tsx
+export default function Home() {
+  return <main style={{ padding: 24 }}>Dev Efficiency Tracker — API is running.</main>;
+}
+```
+并创建空文件 `public/.gitkeep`。（这两个页面是占位，Plan 2 仪表盘会扩展。）
+
+- [ ] **Step 3: 移除 `next.config.ts` 的 standalone，并钉死 pnpm 版本 + 把 `prisma`/`tsx` 移入 dependencies**
+
+`next.config.ts` 改为：
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {};
+
+export default nextConfig;
+```
+在 `package.json` 顶层加 `"packageManager": "pnpm@10.25.0"`（与 host 版本一致；保留 `pnpm.onlyBuiltDependencies` 作为唯一的构建脚本允许清单，host 与容器都读它）。然后：
+Run: `pnpm add prisma tsx`（把它们从 devDependencies 提升为 dependencies，容器运行时需要 `prisma migrate deploy` 与 `tsx prisma/seed.ts`）。
+
+- [ ] **Step 4: 创建 `Dockerfile`（单阶段，全依赖，`next start`）**
 
 ```dockerfile
-FROM node:20-slim AS base
+FROM node:22-slim
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 
-FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm prisma generate && pnpm build
 
-FROM base AS runner
 ENV NODE_ENV=production
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm db:seed && pnpm start"]
 ```
+说明：`openssl`/`ca-certificates` 供 Prisma 引擎；`COREPACK_ENABLE_DOWNLOAD_PROMPT=0` 让 corepack 非交互地拉取钉死的 pnpm。
 
-- [ ] **Step 4: 创建 `.dockerignore`**
+- [ ] **Step 5: 创建 `.dockerignore`**
 
 ```
 node_modules
@@ -1648,14 +1676,16 @@ node_modules
 .env.test
 docs
 tests
+.worktrees
 ```
 
-- [ ] **Step 5: 创建 `docker-compose.yml`**
+- [ ] **Step 6: 创建 `docker-compose.yml`**
 
 ```yaml
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: devuser
       POSTGRES_PASSWORD: devpass
@@ -1670,6 +1700,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -1679,39 +1710,37 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_NAME: ${ADMIN_NAME}
       SESSION_SECRET: ${SESSION_SECRET}
-    command: sh -c "pnpm prisma migrate deploy && pnpm db:seed && node server.js"
     ports:
       - "3000:3000"
 
 volumes:
   pgdata:
 ```
-
-> 注意：`runner` 阶段需要 `prisma` CLI 与 `tsx` 跑 migrate/seed。standalone 默认不含 devDeps。为简化，把 `prisma`、`tsx`、`@node-rs/argon2` 移到 `dependencies`（已在 Task 1 的 deps 中含 argon2/prisma client；本步把 `prisma` 与 `tsx` 也加入 dependencies）。
-
-- [ ] **Step 6: 把 migrate/seed 所需 CLI 移入 dependencies**
-
-Run: `pnpm add prisma tsx`
-（将其从 devDependencies 提升为 dependencies，确保生产镜像可执行 `prisma migrate deploy` 与 `tsx prisma/seed.ts`。）
+迁移与 seed 走 Dockerfile 的 `CMD`，compose 不再覆盖 command。
 
 - [ ] **Step 7: 构建并起服务验证**
 
-Run:
 ```bash
-cp .env.example .env   # 填好 ADMIN_*/SESSION_SECRET
-docker compose up --build -d
-sleep 15
-curl -s -X POST localhost:3000/api/auth/login -H 'content-type: application/json' \
-  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" -i | head -1
+cp -n .env.example .env || true
+docker compose down -v 2>/dev/null || true
+docker compose up --build -d   # 首次构建数分钟
+# 轮询就绪（401 表示应用已起、认证生效）
+for i in $(seq 1 40); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/v1/me 2>/dev/null || echo 000)
+  [ "$code" = "401" ] && break; sleep 3
+done
+curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:3000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"change-me-please"}'
 ```
-Expected: 返回 `HTTP/1.1 200 OK`（admin 登录成功）。
+Expected: 登录返回 `200`；`docker compose logs app` 含迁移、`已创建 admin: ...`、`Ready`。
 
 - [ ] **Step 8: 关停并提交**
 
 ```bash
 docker compose down
 git add -A
-git commit -m "chore: add admin seed, Dockerfile, docker-compose"
+git commit -m "chore: add admin seed, Dockerfile, docker-compose; minimal root page"
 ```
 
 ---
