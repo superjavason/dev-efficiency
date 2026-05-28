@@ -203,10 +203,10 @@ config({ path: ".env.test" });
 - [ ] **Step 7: 创建 `.env.example`**
 
 ```bash
-# 应用数据库（docker-compose 中的 db 服务）
-DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency?schema=public"
+# 本地开发数据库（docker 容器映射到主机 5433，避开本机已占用的 5432）
+DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency?schema=public"
 # 测试库（放入 .env.test，指向独立 database）
-# DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency_test?schema=public"
+# DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency_test?schema=public"
 
 # 首次启动 seed 的管理员账号
 ADMIN_EMAIL="admin@example.com"
@@ -332,19 +332,20 @@ model UsageRecord {
 
 - [ ] **Step 2: 准备本地数据库**
 
-先创建 `docker-compose.yml` 的 db 部分（完整版在 Task 11，这里先起一个临时 db 即可），或本机已有 Postgres。最简单：
+本机 5432 已被占用，故 docker 容器映射到主机 **5433**。
 Run:
 ```bash
-docker run -d --name de-pg -e POSTGRES_USER=devuser -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=dev_efficiency -p 5432:5432 postgres:16
+docker run -d --name de-pg -e POSTGRES_USER=devuser -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=dev_efficiency -p 5433:5432 postgres:16
 ```
-然后创建测试库：
+等待几秒待其就绪，然后创建测试库：
 ```bash
+sleep 5
 docker exec de-pg psql -U devuser -d dev_efficiency -c "CREATE DATABASE dev_efficiency_test;"
 ```
 复制 env：
 ```bash
 cp .env.example .env
-printf 'DATABASE_URL="postgresql://devuser:devpass@localhost:5432/dev_efficiency_test?schema=public"\n' > .env.test
+printf 'DATABASE_URL="postgresql://devuser:devpass@localhost:5433/dev_efficiency_test?schema=public"\n' > .env.test
 ```
 Expected: Postgres 容器运行，两个 database 存在。
 
@@ -454,8 +455,15 @@ Expected: FAIL（模块/函数不存在）。
 ```typescript
 import { hash, verify } from "@node-rs/argon2";
 
+// OWASP Argon2id minimums: 19 MiB memory, t=2, p=1.
+const hashOptions = {
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+};
+
 export function hashPassword(plain: string): Promise<string> {
-  return hash(plain);
+  return hash(plain, hashOptions);
 }
 
 export async function verifyPassword(
@@ -610,7 +618,7 @@ const enumToApi: Record<Tool, ApiTool> = {
 };
 
 export function toolFromApi(s: string): Tool | null {
-  return s in apiToEnum ? apiToEnum[s as ApiTool] : null;
+  return Object.hasOwn(apiToEnum, s) ? apiToEnum[s as ApiTool] : null;
 }
 
 export function toolToApi(t: Tool): ApiTool {
@@ -711,7 +719,13 @@ import { API_TOOLS } from "@/lib/tool";
 const tokenCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
 export const usageRecordSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD")
+    .refine((s) => {
+      const d = new Date(`${s}T00:00:00.000Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+    }, "date must be a valid calendar date"),
   tool: z.enum(API_TOOLS),
   model: z.string().min(1).max(100),
   project: z.string().max(128).default(""),
@@ -1187,7 +1201,7 @@ Expected: FAIL（service 不存在）。
 - [ ] **Step 4: 实现 `src/lib/services/auth.ts`**
 
 ```typescript
-import type { PrismaClient, User } from "@prisma/client";
+import { Prisma, type PrismaClient, type User } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { generateToken, hashToken } from "@/lib/auth/token";
 import type { RegisterInput } from "@/lib/validation/auth";
@@ -1207,13 +1221,14 @@ export interface RegisterResult {
   token: string | null; // 仅在即时审批（有效邀请码）时返回明文 token
 }
 
+// 接受事务客户端，使其可在 $transaction 内复用
 async function issueTokenFor(
-  prisma: PrismaClient,
+  client: Prisma.TransactionClient,
   userId: string,
   name = "default",
 ): Promise<string> {
   const raw = generateToken();
-  await prisma.authToken.create({
+  await client.authToken.create({
     data: { userId, tokenHash: hashToken(raw), name },
   });
   return raw;
@@ -1240,25 +1255,31 @@ export async function registerUser(
     inviteId = code!.id;
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      name: input.name,
-      passwordHash: await hashPassword(input.password),
-      status: approveImmediately ? "approved" : "pending",
-    },
-  });
+  // 在开启事务前完成 argon2 哈希，避免哈希期间长时间持有事务
+  const passwordHash = await hashPassword(input.password);
 
-  let token: string | null = null;
-  if (approveImmediately) {
-    await prisma.inviteCode.update({
-      where: { id: inviteId! },
-      data: { usedById: user.id },
+  // 三次写入（建用户 / 消费邀请码 / 签发 token）置于一个事务，保证原子性
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash,
+        status: approveImmediately ? "approved" : "pending",
+      },
     });
-    token = await issueTokenFor(prisma, user.id);
-  }
 
-  return { user, token };
+    let token: string | null = null;
+    if (approveImmediately) {
+      await tx.inviteCode.update({
+        where: { id: inviteId! },
+        data: { usedById: user.id },
+      });
+      token = await issueTokenFor(tx, user.id);
+    }
+
+    return { user, token };
+  });
 }
 
 export async function approveUser(
@@ -1267,12 +1288,15 @@ export async function approveUser(
 ): Promise<{ user: User; token: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AuthError("user not found", "NOT_FOUND");
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { status: "approved" },
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
+      where: { id: userId },
+      data: { status: "approved" },
+    });
+    const token = await issueTokenFor(tx, userId);
+    return { user: updated, token };
   });
-  const token = await issueTokenFor(prisma, userId);
-  return { user: updated, token };
 }
 
 export async function authenticate(
@@ -1469,7 +1493,7 @@ import { getSession } from "@/lib/auth/session";
 
 export async function POST() {
   const session = await getSession();
-  session.destroy();
+  await session.destroy();
   return NextResponse.json({ ok: true });
 }
 ```
@@ -1542,14 +1566,18 @@ git commit -m "feat: add API routes for register/login/logout/usage/me"
 
 ## Task 12: admin seed + docker-compose + Dockerfile
 
+> 实现说明（与初稿的差异）：初稿计划用 Next.js `output: "standalone"` 多阶段镜像，但 standalone 的精简 `node_modules` **不含 `prisma` CLI 与 `tsx`**，容器启动时的 `prisma migrate deploy` / `db:seed` 会失败。改为**单阶段、全依赖镜像 + `next start`**（内部工具镜像体积非关键，换取可靠与 KISS）。同时：移除 `next.config.ts` 的 `output: "standalone"`；新增根 `layout.tsx`/`page.tsx`（`next build` 需要）与 `public/.gitkeep`；用 `packageManager` 钉死 pnpm 版本使 host 与容器一致（避免 corepack 在容器内拉到 pnpm 11 导致构建脚本允许清单配置分裂）。
+
 **Files:**
-- Create: `prisma/seed.ts`, `docker-compose.yml`, `Dockerfile`, `.dockerignore`
+- Create: `prisma/seed.ts`, `src/app/layout.tsx`, `src/app/page.tsx`, `public/.gitkeep`, `Dockerfile`, `.dockerignore`, `docker-compose.yml`
+- Modify: `next.config.ts`（移除 standalone）、`package.json`（加 `packageManager`，并把 `prisma`/`tsx` 移入 dependencies）
 
 - [ ] **Step 1: 实现 `prisma/seed.ts`**
 
 ```typescript
 import { PrismaClient } from "@prisma/client";
-import { hash } from "@node-rs/argon2";
+// 相对导入：seed 经 `tsx` 运行，tsx 不解析 tsconfig 的 `@/` 别名
+import { hashPassword } from "../src/lib/auth/password";
 
 const prisma = new PrismaClient();
 
@@ -1570,7 +1598,7 @@ async function main() {
     data: {
       email,
       name,
-      passwordHash: await hash(password),
+      passwordHash: await hashPassword(password),
       role: "admin",
       status: "approved",
     },
@@ -1581,40 +1609,65 @@ async function main() {
 main().finally(() => prisma.$disconnect());
 ```
 
-- [ ] **Step 2: 验证 seed（对本地 dev 库）**
+- [ ] **Step 2: 根 `layout.tsx` / `page.tsx`（`next build` 需要）与 `public/.gitkeep`**
 
-Run: `pnpm db:seed`
-Expected: 打印「已创建 admin: ...」（用 `.env` 里的 ADMIN_EMAIL）。再次运行打印「已存在，跳过」。
+`src/app/layout.tsx`：
+```tsx
+import type { ReactNode } from "react";
 
-- [ ] **Step 3: 创建 `Dockerfile`（Next.js standalone）**
+export const metadata = { title: "Dev Efficiency" };
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="zh">
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+`src/app/page.tsx`：
+```tsx
+export default function Home() {
+  return <main style={{ padding: 24 }}>Dev Efficiency Tracker — API is running.</main>;
+}
+```
+并创建空文件 `public/.gitkeep`。（这两个页面是占位，Plan 2 仪表盘会扩展。）
+
+- [ ] **Step 3: 移除 `next.config.ts` 的 standalone，并钉死 pnpm 版本 + 把 `prisma`/`tsx` 移入 dependencies**
+
+`next.config.ts` 改为：
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {};
+
+export default nextConfig;
+```
+在 `package.json` 顶层加 `"packageManager": "pnpm@10.25.0"`（与 host 版本一致；保留 `pnpm.onlyBuiltDependencies` 作为唯一的构建脚本允许清单，host 与容器都读它）。然后：
+Run: `pnpm add prisma tsx`（把它们从 devDependencies 提升为 dependencies，容器运行时需要 `prisma migrate deploy` 与 `tsx prisma/seed.ts`）。
+
+- [ ] **Step 4: 创建 `Dockerfile`（单阶段，全依赖，`next start`）**
 
 ```dockerfile
-FROM node:20-slim AS base
+FROM node:22-slim
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 
-FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm prisma generate && pnpm build
 
-FROM base AS runner
 ENV NODE_ENV=production
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm db:seed && pnpm start"]
 ```
+说明：`openssl`/`ca-certificates` 供 Prisma 引擎；`COREPACK_ENABLE_DOWNLOAD_PROMPT=0` 让 corepack 非交互地拉取钉死的 pnpm。
 
-- [ ] **Step 4: 创建 `.dockerignore`**
+- [ ] **Step 5: 创建 `.dockerignore`**
 
 ```
 node_modules
@@ -1624,14 +1677,16 @@ node_modules
 .env.test
 docs
 tests
+.worktrees
 ```
 
-- [ ] **Step 5: 创建 `docker-compose.yml`**
+- [ ] **Step 6: 创建 `docker-compose.yml`**
 
 ```yaml
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: devuser
       POSTGRES_PASSWORD: devpass
@@ -1646,6 +1701,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -1655,39 +1711,37 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_NAME: ${ADMIN_NAME}
       SESSION_SECRET: ${SESSION_SECRET}
-    command: sh -c "pnpm prisma migrate deploy && pnpm db:seed && node server.js"
     ports:
       - "3000:3000"
 
 volumes:
   pgdata:
 ```
-
-> 注意：`runner` 阶段需要 `prisma` CLI 与 `tsx` 跑 migrate/seed。standalone 默认不含 devDeps。为简化，把 `prisma`、`tsx`、`@node-rs/argon2` 移到 `dependencies`（已在 Task 1 的 deps 中含 argon2/prisma client；本步把 `prisma` 与 `tsx` 也加入 dependencies）。
-
-- [ ] **Step 6: 把 migrate/seed 所需 CLI 移入 dependencies**
-
-Run: `pnpm add prisma tsx`
-（将其从 devDependencies 提升为 dependencies，确保生产镜像可执行 `prisma migrate deploy` 与 `tsx prisma/seed.ts`。）
+迁移与 seed 走 Dockerfile 的 `CMD`，compose 不再覆盖 command。
 
 - [ ] **Step 7: 构建并起服务验证**
 
-Run:
 ```bash
-cp .env.example .env   # 填好 ADMIN_*/SESSION_SECRET
-docker compose up --build -d
-sleep 15
-curl -s -X POST localhost:3000/api/auth/login -H 'content-type: application/json' \
-  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" -i | head -1
+cp -n .env.example .env || true
+docker compose down -v 2>/dev/null || true
+docker compose up --build -d   # 首次构建数分钟
+# 轮询就绪（401 表示应用已起、认证生效）
+for i in $(seq 1 40); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/v1/me 2>/dev/null || echo 000)
+  [ "$code" = "401" ] && break; sleep 3
+done
+curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:3000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"change-me-please"}'
 ```
-Expected: 返回 `HTTP/1.1 200 OK`（admin 登录成功）。
+Expected: 登录返回 `200`；`docker compose logs app` 含迁移、`已创建 admin: ...`、`Ready`。
 
 - [ ] **Step 8: 关停并提交**
 
 ```bash
 docker compose down
 git add -A
-git commit -m "chore: add admin seed, Dockerfile, docker-compose"
+git commit -m "chore: add admin seed, Dockerfile, docker-compose; minimal root page"
 ```
 
 ---

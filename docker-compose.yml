@@ -1,0 +1,33 @@
+services:
+  db:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: dev_efficiency
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d dev_efficiency"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    restart: unless-stopped
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://devuser:devpass@db:5432/dev_efficiency?schema=public"
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME}
+      SESSION_SECRET: ${SESSION_SECRET}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
