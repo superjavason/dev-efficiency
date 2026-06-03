@@ -9,6 +9,14 @@ export class MetricsAuthError extends Error {
   }
 }
 
+/**
+ * Resolve which userId scope a query should run against.
+ * Admin: honors `requested` (or null = all users).
+ * Member: ALWAYS clamped to their own id — `requested` is silently ignored.
+ * The silent override is intentional: it prevents forged URL params from
+ * leaking other users' data and makes the service the single privacy
+ * enforcement point. Do not change to throw without re-reviewing every caller.
+ */
 function effectiveUserId(viewer: User, requested?: string | null): string | null {
   if (viewer.role === "admin") return requested ?? null;
   return viewer.id;

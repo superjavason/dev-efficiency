@@ -44,8 +44,8 @@ export async function updateUserStatus(
   if (viewer.role !== "admin") {
     throw new UsersAuthError("forbidden");
   }
-  if (viewer.id === userId && status !== "approved") {
-    throw new UsersAuthError("admin cannot disable themselves");
+  if (viewer.id === userId && (status === "disabled" || status === "pending")) {
+    throw new UsersAuthError("admin cannot deactivate themselves");
   }
   return prisma.user.update({
     where: { id: userId },
