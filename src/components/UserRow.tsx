@@ -52,7 +52,7 @@ export function UserRow({ data }: { data: AdminUserRowData }) {
           <TokenCreateDialog targetUserId={data.id} triggerLabel="代签发 token" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">更多</Button>
+              <Button variant="outline" size="sm" disabled={pending}>更多</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {data.status === "approved" && !data.isSelf && (
