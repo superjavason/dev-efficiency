@@ -1,7 +1,7 @@
 # 研发效能统计系统 — 设计方案
 
-- 状态：已通过设计评审，待编写实现计划
-- 日期：2026-05-25
+- 状态：Plan 1 已实现并合并；Plan 2/3/4 设计调整后待实施
+- 日期：2026-05-25（初版）；2026-05-29 修订（取消审批、加 GitHub OAuth、新增 Teams 子系统）
 - 作者：xujiajie（superjavason@gmail.com）
 
 ## 1. 背景与目标
@@ -11,7 +11,16 @@
 - **工具**：Claude Code、Codex CLI、Cursor
 - **模型**：如 `claude-opus-4-7`、`gpt-5.4` 等
 
-研发通过安装一个统一发布的 Claude Code skill，在本地采集数据后上传到管理者自托管的服务端。系统对研发进行认证：研发先注册账号、由管理者准入，拿到一个一次性展示的 auth-token，把 token 配置到 skill 后即可上传。
+研发通过安装一个统一发布的 Claude Code skill，在本地采集数据后上传到管理者自托管的服务端。系统提供 Web 仪表盘供研发查看自己的数据、admin 查看平台数据；用户可创建**团队**并邀请他人加入，团队内成员共享彼此的 token 使用数据用于协作。
+
+### 路线图
+
+| 阶段 | 范围 | 状态 |
+|------|------|------|
+| Plan 1 | 服务端核心：数据模型 + Bearer 鉴权上传 API + admin seed + Docker | ✅ 已合并 |
+| Plan 2 | Web 仪表盘：Plan 1 清理 + UI 地基（Tailwind + shadcn）+ 双路径登录（邮箱密码 + GitHub OAuth）+ 个人仪表盘 + admin 用户管理 | 设计完，待实施 |
+| Plan 3 | Teams：创建团队、邀请加入、团队仪表盘（共享团队成员数据） | 待设计 |
+| Plan 4 | 客户端 skill 采集器：Claude Code/Codex 本地日志解析 + Cursor 手填 + 上传 | 待设计 |
 
 ### 非目标（v1 不做）
 
@@ -19,6 +28,7 @@
 - Cursor / Copilot 的云端 Admin API 自动采集（Cursor v1 走手动填报）。
 - 自动定时上传（v1 仅手动触发；幂等补传机制使其足够）。
 - 上传任何 prompt、代码、文件内容（隐私底线，永不上传）。
+- ~~管理员审批流~~（已于 2026-05-29 取消）：注册（邮箱密码或 GitHub OAuth）直接创建 `approved` 用户。`pending` 枚举值保留但不再写入；`disabled` 仍可由 admin 切换。`InviteCode` 模型在 Plan 2 清理时移除（团队邀请走 Plan 3 独立的 `TeamInvite` 模型）。
 
 ## 2. 系统总览
 
