@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { OAuth2RequestError } from "arctic";
 import { prisma } from "@/lib/db";
-import { buildGithubClient, linkOrCreateGithubUser, liveGithubFetcher } from "@/lib/auth/github";
+import { buildGithubClient, linkOrCreateGithubUser, liveGithubFetcher, GithubOAuthUserError } from "@/lib/auth/github";
 import { getSession } from "@/lib/auth/session";
+import { safeReturnTo } from "@/lib/safe-return-to";
 
 export async function GET(req: Request) {
   const gh = buildGithubClient();
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state");
   const jar = await cookies();
   const storedState = jar.get("gh_oauth_state")?.value;
-  const returnTo = jar.get("gh_oauth_return")?.value ?? "/dashboard";
+  const returnTo = safeReturnTo(jar.get("gh_oauth_return")?.value);
 
   if (!code || !state || !storedState || state !== storedState) {
     return NextResponse.json({ error: "invalid oauth state" }, { status: 400 });
@@ -38,6 +39,9 @@ export async function GET(req: Request) {
 
     return NextResponse.redirect(new URL(returnTo, url).toString());
   } catch (e) {
+    if (e instanceof GithubOAuthUserError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     if (e instanceof OAuth2RequestError) {
       return NextResponse.json({ error: "oauth exchange failed" }, { status: 400 });
     }

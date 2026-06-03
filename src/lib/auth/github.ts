@@ -1,6 +1,13 @@
 import { GitHub } from "arctic";
 import type { PrismaClient, User } from "@prisma/client";
 
+export class GithubOAuthUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GithubOAuthUserError";
+  }
+}
+
 export interface GithubProfile {
   id: number;
   login: string;
@@ -48,7 +55,7 @@ export const liveGithubFetcher: GithubFetcher = {
     if (!res.ok) throw new Error(`github /user/emails failed: ${res.status}`);
     const emails: GithubEmail[] = await res.json();
     const primary = emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified);
-    if (!primary) throw new Error("no verified email from GitHub");
+    if (!primary) throw new GithubOAuthUserError("no verified email from GitHub");
     return primary.email;
   },
 };

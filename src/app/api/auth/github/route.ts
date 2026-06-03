@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { generateState } from "arctic";
 import { buildGithubClient } from "@/lib/auth/github";
+import { safeReturnTo } from "@/lib/safe-return-to";
 
 export async function GET(req: Request) {
   const gh = buildGithubClient();
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const state = generateState();
   const url = gh.createAuthorizationURL(state, ["read:user", "user:email"]);
 
-  const returnTo = new URL(req.url).searchParams.get("returnTo") ?? "/dashboard";
+  const returnTo = safeReturnTo(new URL(req.url).searchParams.get("returnTo"));
   const jar = await cookies();
   jar.set("gh_oauth_state", state, {
     httpOnly: true,

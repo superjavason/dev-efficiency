@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { loginSchema, registerSchema } from "@/lib/validation/auth";
 import { authenticate, registerUser, AuthError } from "@/lib/services/auth";
 import { getSession } from "@/lib/auth/session";
+import { safeReturnTo } from "@/lib/safe-return-to";
 
 export type LoginState =
   | { ok: true }
@@ -28,7 +29,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   session.role = user.role;
   await session.save();
 
-  const returnTo = (formData.get("returnTo") as string) || "/dashboard";
+  const returnTo = safeReturnTo(formData.get("returnTo") as string | null);
   redirect(returnTo);
 }
 
