@@ -17,7 +17,10 @@ const PRESETS = [
 ] as const;
 
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function DateRangePicker() {
@@ -30,22 +33,25 @@ export function DateRangePicker() {
   const [from, setFrom] = useState<Date | undefined>();
   const [to, setTo] = useState<Date | undefined>();
 
-  function push(qs: URLSearchParams) {
-    router.push(`${pathname}?${qs.toString()}`);
+  function push(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(params.toString());
+    // Always clear all range-related keys; caller will set the ones it wants.
+    next.delete("preset");
+    next.delete("from");
+    next.delete("to");
+    for (const [k, v] of Object.entries(updates)) {
+      if (v !== null) next.set(k, v);
+    }
+    router.push(`${pathname}?${next.toString()}`);
   }
 
   function selectPreset(value: string) {
-    const qs = new URLSearchParams();
-    qs.set("preset", value);
-    push(qs);
+    push({ preset: value });
   }
 
   function applyCustom() {
     if (!from || !to) return;
-    const qs = new URLSearchParams();
-    qs.set("from", toIsoDate(from));
-    qs.set("to", toIsoDate(to));
-    push(qs);
+    push({ from: toIsoDate(from), to: toIsoDate(to) });
     setOpen(false);
   }
 
