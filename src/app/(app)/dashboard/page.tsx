@@ -32,9 +32,9 @@ export default async function DashboardPage({
   const range = parseRange(sp);
 
   const [trend, tools, models, tokens] = await Promise.all([
-    dailyTotals(prisma, user, range, {}),
-    toolBreakdown(prisma, user, range, {}),
-    modelBreakdown(prisma, user, range, {}),
+    dailyTotals(prisma, user, range, { scope: { type: "self" } }),
+    toolBreakdown(prisma, user, range, { scope: { type: "self" } }),
+    modelBreakdown(prisma, user, range, { scope: { type: "self" } }),
     listTokensFor(prisma, user, user.id),
   ]);
 

@@ -32,10 +32,10 @@ export default async function AdminOverviewPage({
   const range = parseRange(sp);
 
   const [trend, ranking, tools, models] = await Promise.all([
-    dailyTotals(prisma, user, range, {}),
-    userRanking(prisma, user, range),
-    toolBreakdown(prisma, user, range, {}),
-    modelBreakdown(prisma, user, range, {}),
+    dailyTotals(prisma, user, range, { scope: { type: "self" } }),
+    userRanking(prisma, user, range, { scope: { type: "self" } }),
+    toolBreakdown(prisma, user, range, { scope: { type: "self" } }),
+    modelBreakdown(prisma, user, range, { scope: { type: "self" } }),
   ]);
 
   return (

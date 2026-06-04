@@ -10,16 +10,60 @@ export class MetricsAuthError extends Error {
 }
 
 /**
- * Resolve which userId scope a query should run against.
- * Admin: honors `requested` (or null = all users).
- * Member: ALWAYS clamped to their own id — `requested` is silently ignored.
- * The silent override is intentional: it prevents forged URL params from
- * leaking other users' data and makes the service the single privacy
- * enforcement point. Do not change to throw without re-reviewing every caller.
+ * Query scope for metrics calls.
+ * - `self`: existing behavior — member clamped to viewer.id; admin honors opts.userId or returns all users.
+ * - `team`: aggregates across all current members of the team. Viewer must be a team member or platform admin.
+ *   `opts.userId` is intentionally ignored for team scope (no per-user drill-down within team in v1).
  */
-function effectiveUserId(viewer: User, requested?: string | null): string | null {
-  if (viewer.role === "admin") return requested ?? null;
-  return viewer.id;
+export type MetricsScope =
+  | { type: "self" }
+  | { type: "team"; teamId: string };
+
+/**
+ * Resolve the userId filter for a query. Returns null = "no filter" (admin self-scope, all users).
+ * Throws MetricsAuthError if the viewer isn't allowed the requested scope.
+ *
+ * Privacy invariant — never change to throw on forged self userId without re-reading every caller:
+ * silent clamp is intentional. Team scope DOES validate membership and DOES override opts.userId.
+ */
+async function effectiveScope(
+  prisma: PrismaClient,
+  viewer: User,
+  scope: MetricsScope,
+  requestedUserId?: string | null,
+): Promise<string[] | null> {
+  if (scope.type === "team") {
+    const isAdmin = viewer.role === "admin";
+    if (!isAdmin) {
+      const m = await prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId: scope.teamId, userId: viewer.id } },
+      });
+      if (!m) throw new MetricsAuthError("forbidden: not a team member");
+    }
+    const members = await prisma.teamMember.findMany({
+      where: { teamId: scope.teamId },
+      select: { userId: true },
+    });
+    return members.map((m) => m.userId);
+  }
+  if (viewer.role === "admin") {
+    return requestedUserId ? [requestedUserId] : null;
+  }
+  return [viewer.id];
+}
+
+function whereClauseFor(range: DateRange, userIds: string[] | null) {
+  const base: { date: { gte: Date; lte: Date }; userId?: { in: string[] } } = {
+    date: { gte: range.from, lte: range.to },
+  };
+  if (userIds) {
+    if (userIds.length === 0) {
+      base.userId = { in: ["__no_match__"] };
+    } else {
+      base.userId = { in: userIds };
+    }
+  }
+  return base;
 }
 
 export interface DailyPoint {
@@ -31,15 +75,12 @@ export async function dailyTotals(
   prisma: PrismaClient,
   viewer: User,
   range: DateRange,
-  opts: { userId?: string | null },
+  opts: { scope: MetricsScope; userId?: string | null },
 ): Promise<DailyPoint[]> {
-  const userId = effectiveUserId(viewer, opts.userId);
+  const userIds = await effectiveScope(prisma, viewer, opts.scope, opts.userId);
   const rows = await prisma.usageRecord.groupBy({
     by: ["date"],
-    where: {
-      date: { gte: range.from, lte: range.to },
-      ...(userId ? { userId } : {}),
-    },
+    where: whereClauseFor(range, userIds),
     _sum: { totalTokens: true },
     orderBy: { date: "asc" },
   });
@@ -61,12 +102,16 @@ export async function userRanking(
   prisma: PrismaClient,
   viewer: User,
   range: DateRange,
+  opts: { scope: MetricsScope },
 ): Promise<UserRankingRow[]> {
-  if (viewer.role !== "admin") throw new MetricsAuthError("forbidden");
+  if (opts.scope.type === "self" && viewer.role !== "admin") {
+    throw new MetricsAuthError("forbidden");
+  }
+  const userIds = await effectiveScope(prisma, viewer, opts.scope, null);
 
   const grouped = await prisma.usageRecord.groupBy({
     by: ["userId"],
-    where: { date: { gte: range.from, lte: range.to } },
+    where: whereClauseFor(range, userIds),
     _sum: { totalTokens: true },
   });
   if (grouped.length === 0) return [];
@@ -97,15 +142,12 @@ export async function toolBreakdown(
   prisma: PrismaClient,
   viewer: User,
   range: DateRange,
-  opts: { userId?: string | null },
+  opts: { scope: MetricsScope; userId?: string | null },
 ): Promise<ToolPoint[]> {
-  const userId = effectiveUserId(viewer, opts.userId);
+  const userIds = await effectiveScope(prisma, viewer, opts.scope, opts.userId);
   const rows = await prisma.usageRecord.groupBy({
     by: ["tool"],
-    where: {
-      date: { gte: range.from, lte: range.to },
-      ...(userId ? { userId } : {}),
-    },
+    where: whereClauseFor(range, userIds),
     _sum: { totalTokens: true },
   });
   return rows.map((r) => ({
@@ -123,15 +165,12 @@ export async function modelBreakdown(
   prisma: PrismaClient,
   viewer: User,
   range: DateRange,
-  opts: { userId?: string | null },
+  opts: { scope: MetricsScope; userId?: string | null },
 ): Promise<ModelPoint[]> {
-  const userId = effectiveUserId(viewer, opts.userId);
+  const userIds = await effectiveScope(prisma, viewer, opts.scope, opts.userId);
   const rows = await prisma.usageRecord.groupBy({
     by: ["model"],
-    where: {
-      date: { gte: range.from, lte: range.to },
-      ...(userId ? { userId } : {}),
-    },
+    where: whereClauseFor(range, userIds),
     _sum: { totalTokens: true },
     orderBy: { _sum: { totalTokens: "desc" } },
   });
