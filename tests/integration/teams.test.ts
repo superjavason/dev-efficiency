@@ -187,7 +187,20 @@ describe("teams service", () => {
     const owner = await makeUser();
     const t = await createTeam(prisma, owner, { name: "T" });
     const admin = await makeUser({ role: "admin" });
+
+    // admin can create invites without being a team member
     const inv = await createInvite(prisma, admin, t.id);
     expect(inv.code).toBeTruthy();
+
+    // admin can remove a member without being a team member themselves
+    const newcomer = await makeUser();
+    await acceptInvite(prisma, newcomer, inv.code);
+    expect(await prisma.teamMember.count({ where: { teamId: t.id } })).toBe(2);
+    await removeMember(prisma, admin, t.id, newcomer.id);
+    expect(await prisma.teamMember.count({ where: { teamId: t.id } })).toBe(1);
+
+    // admin can delete a team without being a team member
+    await deleteTeam(prisma, admin, t.id);
+    expect(await prisma.team.findUnique({ where: { id: t.id } })).toBeNull();
   });
 });

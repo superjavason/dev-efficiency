@@ -22,6 +22,15 @@ describe("slugify", () => {
     expect(slugify(long)).toBe("x".repeat(60));
   });
 
+  it("re-trims trailing hyphen produced by truncation", () => {
+    // 59 chars of 'x' + ' b' → after non-alnum→'-' and slice(0,60) the last char is '-'
+    const input = "x".repeat(59) + " b";
+    const out = slugify(input);
+    expect(out).not.toBeNull();
+    expect(out!.endsWith("-")).toBe(false);
+    expect(out).toBe("x".repeat(59)); // single 'x' run, trailing '-' trimmed away
+  });
+
   it("returns null for non-ASCII-only input", () => {
     expect(slugify("中文团队")).toBeNull();
     expect(slugify("🚀 emoji")).toBe("emoji");
