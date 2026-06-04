@@ -11,13 +11,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/lib/actions/auth";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 
 interface AppShellProps {
   user: { id: string; name: string; email: string; role: "admin" | "member"; avatarUrl: string | null };
+  myTeams: { name: string; slug: string }[];
   children: ReactNode;
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, myTeams, children }: AppShellProps) {
   const isAdmin = user.role === "admin";
   return (
     <div className="flex min-h-screen">
@@ -27,6 +29,24 @@ export function AppShell({ user, children }: AppShellProps) {
           <Link className="rounded px-3 py-2 hover:bg-accent" href="/dashboard">
             个人仪表盘
           </Link>
+
+          <div className="mt-4 px-3 py-1 text-xs uppercase text-muted-foreground">
+            我的团队
+          </div>
+          <TeamSwitcher teams={myTeams} />
+          <Link
+            className="rounded px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+            href="/teams/new"
+          >
+            + 创建团队
+          </Link>
+          <Link
+            className="rounded px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+            href="/teams"
+          >
+            全部团队
+          </Link>
+
           {isAdmin && (
             <>
               <div className="mt-4 px-3 py-1 text-xs uppercase text-muted-foreground">
@@ -37,6 +57,9 @@ export function AppShell({ user, children }: AppShellProps) {
               </Link>
               <Link className="rounded px-3 py-2 hover:bg-accent" href="/admin/users">
                 用户管理
+              </Link>
+              <Link className="rounded px-3 py-2 hover:bg-accent" href="/admin/teams">
+                平台团队
               </Link>
             </>
           )}
