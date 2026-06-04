@@ -22,7 +22,7 @@ export function TeamSwitcher({ teams }: { teams: SidebarTeam[] }) {
           className="rounded px-3 py-1.5 text-sm hover:bg-accent"
           title={t.name}
         >
-          <span className="truncate">{t.name}</span>
+          <span className="block truncate">{t.name}</span>
         </Link>
       ))}
     </div>
