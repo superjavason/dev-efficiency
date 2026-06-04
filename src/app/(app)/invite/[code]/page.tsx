@@ -9,6 +9,10 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   if (!session.userId) {
     redirect(`/login?returnTo=${encodeURIComponent(`/invite/${code}`)}`);
   }
+  const viewer = await prisma.user.findUnique({ where: { id: session.userId } });
+  if (!viewer || viewer.status !== "approved") {
+    redirect(`/login?returnTo=${encodeURIComponent(`/invite/${code}`)}`);
+  }
 
   const invite = await prisma.teamInvite.findUnique({
     where: { code },
