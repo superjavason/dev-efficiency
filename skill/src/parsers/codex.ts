@@ -51,7 +51,18 @@ export async function parseCodexFile(path: string): Promise<RawEvent[]> {
       } catch {
         continue;
       }
-      if (parsed.type === "session_init") {
+      // Codex events that carry session metadata:
+      // - "session_meta" (first line of modern rollouts): has cwd, NO model.
+      // - "turn_context" (each turn): has both cwd and model — this is the
+      //   only reliable source of the model name in current Codex format.
+      // - "session_init" (kept for older formats and our spec fixture).
+      // We accept all three and let later events overwrite earlier ones
+      // (turn_context appears after session_meta, so it correctly wins).
+      if (
+        parsed.type === "session_init" ||
+        parsed.type === "session_meta" ||
+        parsed.type === "turn_context"
+      ) {
         model = parsed.payload?.model ?? model;
         cwd = parsed.payload?.cwd ?? cwd;
       } else if (parsed.type === "event_msg" && parsed.payload?.type === "token_count") {

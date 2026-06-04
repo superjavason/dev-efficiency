@@ -53,6 +53,31 @@ describe("parseCodexFile", () => {
   });
 });
 
+describe("parseCodexFile — real-format (session_meta + turn_context)", () => {
+  const realFixture = join(
+    here,
+    "..",
+    "fixtures",
+    "rollout-2026-05-25T22-01-33-019e6128-528d-7883-8500-76bc6633a23b.jsonl",
+  );
+
+  it("extracts model from turn_context when session_meta lacks model", async () => {
+    const events = await parseCodexFile(realFixture);
+    expect(events).toHaveLength(1);
+    expect(events[0].model).toBe("gpt-5.4");
+    expect(events[0].projectPath).toBe("/Users/me/real-codex-repo");
+  });
+
+  it("uses token_count totals from the real-format fixture", async () => {
+    const events = await parseCodexFile(realFixture);
+    const e = events[0];
+    expect(e.inputTokens).toBe(12345);
+    expect(e.cacheReadTokens).toBe(2000);
+    expect(e.outputTokens).toBe(500 + 100);
+    expect(e.cacheCreationTokens).toBe(0);
+  });
+});
+
 describe("parseCodexDir", () => {
   it("returns empty array when dir does not exist", async () => {
     const events = await parseCodexDir("/nonexistent/zzz");
