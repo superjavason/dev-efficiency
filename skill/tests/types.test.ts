@@ -20,7 +20,7 @@ describe("usageRecordSchema (privacy backbone)", () => {
     expect(usageRecordSchema.safeParse(valid).success).toBe(true);
   });
 
-  it("strips unknown fields (zod strict)", () => {
+  it("rejects unknown fields (zod strict — does not silently strip)", () => {
     const r = usageRecordSchema.safeParse({ ...valid, prompt: "secret", code: "rm -rf /" });
     expect(r.success).toBe(false);
   });
