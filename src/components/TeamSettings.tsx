@@ -147,7 +147,17 @@ export function TeamSettings({
                           variant="ghost"
                           size="sm"
                           disabled={pending || isLastOwner}
-                          onClick={() => withResult(() => leaveTeamAction(teamId, slug))}
+                          onClick={() => {
+                            setError(null);
+                            startTransition(async () => {
+                              const res = await leaveTeamAction(teamId, slug);
+                              if (!res.ok) {
+                                setError(res.error ?? "操作失败");
+                              } else {
+                                router.push("/teams");
+                              }
+                            });
+                          }}
                         >
                           离开团队
                         </Button>

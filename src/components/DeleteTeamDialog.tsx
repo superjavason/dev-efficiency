@@ -39,7 +39,16 @@ export function DeleteTeamDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) {
+          setConfirm("");
+          setError(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="destructive">删除团队</Button>
       </DialogTrigger>
