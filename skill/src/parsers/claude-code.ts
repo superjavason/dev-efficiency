@@ -61,6 +61,7 @@ export async function parseClaudeCodeFile(path: string): Promise<RawEvent[]> {
     }
   } finally {
     rl.close();
+    stream.destroy();
   }
   return events;
 }

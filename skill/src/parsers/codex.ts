@@ -61,6 +61,7 @@ export async function parseCodexFile(path: string): Promise<RawEvent[]> {
     }
   } finally {
     rl.close();
+    stream.destroy();
   }
 
   if (!lastUsage || !lastTimestamp) return [];
@@ -76,7 +77,7 @@ export async function parseCodexFile(path: string): Promise<RawEvent[]> {
       projectPath: cwd,
       inputTokens: total.input_tokens ?? 0,
       outputTokens: (total.output_tokens ?? 0) + (total.reasoning_output_tokens ?? 0),
-      cacheCreationTokens: 0,
+      cacheCreationTokens: 0, // Codex protocol has no cache_creation field; intentional.
       cacheReadTokens: total.cached_input_tokens ?? 0,
       sessionId: sessionIdFromFile(path),
       source: "auto",
