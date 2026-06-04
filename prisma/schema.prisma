@@ -42,6 +42,10 @@ model User {
   usageRecords   UsageRecord[]
   avatarUrl    String?
   githubId     String?    @unique
+
+  teamsCreated       Team[]         @relation("TeamCreatedBy")
+  teamMemberships    TeamMember[]
+  teamInvitesCreated TeamInvite[]   @relation("TeamInviteCreatedBy")
 }
 
 model AuthToken {
@@ -76,4 +80,44 @@ model UsageRecord {
   @@unique([userId, date, tool, model, project, source])
   @@index([date])
   @@index([userId, date])
+}
+
+enum TeamRole {
+  owner
+  member
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  createdById String
+  createdBy   User         @relation("TeamCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+
+  members     TeamMember[]
+  invites     TeamInvite[]
+}
+
+model TeamMember {
+  teamId    String
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamRole   @default(member)
+  joinedAt  DateTime   @default(now())
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+model TeamInvite {
+  id          String    @id @default(cuid())
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  code        String    @unique
+  createdById String
+  createdBy   User      @relation("TeamInviteCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
 }

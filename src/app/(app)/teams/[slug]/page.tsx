@@ -1,4 +1,6 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
@@ -6,6 +8,7 @@ import { parseRange } from "@/lib/range";
 import {
   dailyTotals, userRanking, toolBreakdown, modelBreakdown,
 } from "@/lib/services/metrics";
+import { getTeam, TeamsAuthError } from "@/lib/services/teams";
 import { DailyTrendChart } from "@/components/charts/DailyTrendChart";
 import { ToolBreakdownChart } from "@/components/charts/ToolBreakdownChart";
 import { ModelBreakdownChart } from "@/components/charts/ModelBreakdownChart";
@@ -18,31 +21,57 @@ interface SearchParams {
   to?: string;
 }
 
-export default async function AdminOverviewPage({
+export default async function TeamDashboardPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ slug: string }>;
   searchParams: Promise<SearchParams>;
 }) {
+  const { slug } = await params;
   const session = await getSession();
   if (!session.userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
-  if (!user || user.role !== "admin") redirect("/dashboard");
+  if (!user || user.status !== "approved") redirect("/login");
+
+  let team;
+  try {
+    team = await getTeam(prisma, user, slug);
+  } catch (e) {
+    if (e instanceof TeamsAuthError) notFound();
+    throw e;
+  }
 
   const sp = await searchParams;
   const range = parseRange(sp);
+  const scope = { type: "team" as const, teamId: team.id };
 
   const [trend, ranking, tools, models] = await Promise.all([
-    dailyTotals(prisma, user, range, { scope: { type: "self" } }),
-    userRanking(prisma, user, range, { scope: { type: "self" } }),
-    toolBreakdown(prisma, user, range, { scope: { type: "self" } }),
-    modelBreakdown(prisma, user, range, { scope: { type: "self" } }),
+    dailyTotals(prisma, user, range, { scope }),
+    userRanking(prisma, user, range, { scope }),
+    toolBreakdown(prisma, user, range, { scope }),
+    modelBreakdown(prisma, user, range, { scope }),
   ]);
+
+  const canManage = team.viewerRole === "owner" || user.role === "admin";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">平台总览</h1>
-        <DateRangePicker />
+        <div>
+          <h1 className="text-2xl font-semibold">{team.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            团队 · {team.memberCount} 人 · /{team.slug}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <DateRangePicker />
+          {canManage && (
+            <Link href={`/teams/${team.slug}/settings`}>
+              <Button variant="outline">设置</Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -68,7 +97,7 @@ export default async function AdminOverviewPage({
       </div>
 
       <Card>
-        <CardHeader><CardTitle>用户排行</CardTitle></CardHeader>
+        <CardHeader><CardTitle>团队内排行</CardTitle></CardHeader>
         <CardContent>
           <UserRankingTable
             data={ranking.map((r) => ({

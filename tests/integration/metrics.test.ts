@@ -7,6 +7,7 @@ import {
   modelBreakdown,
   MetricsAuthError,
 } from "@/lib/services/metrics";
+import type { MetricsScope } from "@/lib/services/metrics";
 
 async function makeUser(over: { role?: "admin" | "member" } = {}) {
   return prisma.user.create({
@@ -55,10 +56,10 @@ describe("metrics service viewer scoping", () => {
     await record(me.id, { date: "2026-05-25", total: 10n });
     await record(other.id, { date: "2026-05-25", total: 99n });
 
-    const own = await dailyTotals(prisma, me, range, {});
+    const own = await dailyTotals(prisma, me, range, { scope: { type: "self" } });
     expect(own.reduce((s, p) => s + Number(p.total), 0)).toBe(10);
 
-    const forged = await dailyTotals(prisma, me, range, { userId: other.id });
+    const forged = await dailyTotals(prisma, me, range, { scope: { type: "self" }, userId: other.id });
     expect(forged.reduce((s, p) => s + Number(p.total), 0)).toBe(10);
   });
 
@@ -66,7 +67,7 @@ describe("metrics service viewer scoping", () => {
     const admin = await makeUser({ role: "admin" });
     const target = await makeUser();
     await record(target.id, { date: "2026-05-25", total: 77n });
-    const r = await dailyTotals(prisma, admin, range, { userId: target.id });
+    const r = await dailyTotals(prisma, admin, range, { scope: { type: "self" }, userId: target.id });
     expect(r.reduce((s, p) => s + Number(p.total), 0)).toBe(77);
   });
 
@@ -76,13 +77,13 @@ describe("metrics service viewer scoping", () => {
     const b = await makeUser();
     await record(a.id, { date: "2026-05-25", total: 10n });
     await record(b.id, { date: "2026-05-25", total: 30n });
-    const r = await dailyTotals(prisma, admin, range, {});
+    const r = await dailyTotals(prisma, admin, range, { scope: { type: "self" } });
     expect(r.reduce((s, p) => s + Number(p.total), 0)).toBe(40);
   });
 
   it("userRanking forbidden for member", async () => {
     const me = await makeUser();
-    await expect(userRanking(prisma, me, range)).rejects.toBeInstanceOf(MetricsAuthError);
+    await expect(userRanking(prisma, me, range, { scope: { type: "self" } })).rejects.toBeInstanceOf(MetricsAuthError);
   });
 
   it("userRanking returns sorted aggregate for admin", async () => {
@@ -91,7 +92,7 @@ describe("metrics service viewer scoping", () => {
     const small = await makeUser();
     await record(big.id, { total: 500n });
     await record(small.id, { total: 100n });
-    const r = await userRanking(prisma, admin, range);
+    const r = await userRanking(prisma, admin, range, { scope: { type: "self" } });
     expect(r[0].userId).toBe(big.id);
     expect(Number(r[0].total)).toBe(500);
     expect(r[1].userId).toBe(small.id);
@@ -104,11 +105,105 @@ describe("metrics service viewer scoping", () => {
     await record(me.id, { tool: "codex", model: "gpt-5.4", total: 30n });
     await record(other.id, { tool: "claude_code", model: "claude-opus-4-7", total: 999n });
 
-    const tools = await toolBreakdown(prisma, me, range, {});
+    const tools = await toolBreakdown(prisma, me, range, { scope: { type: "self" } });
     expect(tools.find((t) => t.tool === "claude-code")?.total).toBe(10n);
     expect(tools.find((t) => t.tool === "codex")?.total).toBe(30n);
 
-    const models = await modelBreakdown(prisma, me, range, {});
+    const models = await modelBreakdown(prisma, me, range, { scope: { type: "self" } });
     expect(models.find((m) => m.model === "claude-opus-4-7")?.total).toBe(10n);
+  });
+});
+
+describe("metrics service team scope", () => {
+  beforeEach(resetDb);
+  afterAll(() => prisma.$disconnect());
+
+  async function makeTeamWith(members: { user: { id: string }; role?: "owner" | "member" }[]) {
+    const team = await prisma.team.create({
+      data: {
+        name: "T",
+        slug: `t-${Math.random().toString(36).slice(2, 8)}`,
+        createdById: members[0].user.id,
+      },
+    });
+    for (let i = 0; i < members.length; i++) {
+      await prisma.teamMember.create({
+        data: {
+          teamId: team.id,
+          userId: members[i].user.id,
+          role: members[i].role ?? (i === 0 ? "owner" : "member"),
+        },
+      });
+    }
+    return team;
+  }
+
+  it("team-scope dailyTotals aggregates across team members", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    const team = await makeTeamWith([{ user: a }, { user: b }]);
+    await record(a.id, { date: "2026-05-25", total: 100n });
+    await record(b.id, { date: "2026-05-25", total: 200n });
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    const out = await dailyTotals(prisma, a, range, { scope });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(300);
+  });
+
+  it("team-scope userRanking visible to any team member", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    const team = await makeTeamWith([{ user: a }, { user: b }]);
+    await record(a.id, { total: 50n });
+    await record(b.id, { total: 150n });
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    const out = await userRanking(prisma, b, range, { scope });
+    expect(out[0].userId).toBe(b.id);
+    expect(out[1].userId).toBe(a.id);
+  });
+
+  it("team-scope rejected for non-member non-admin", async () => {
+    const a = await makeUser();
+    const team = await makeTeamWith([{ user: a }]);
+    const outsider = await makeUser();
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    await expect(dailyTotals(prisma, outsider, range, { scope })).rejects.toBeInstanceOf(MetricsAuthError);
+    await expect(userRanking(prisma, outsider, range, { scope })).rejects.toBeInstanceOf(MetricsAuthError);
+  });
+
+  it("team-scope allowed for global admin even if not a member", async () => {
+    const a = await makeUser();
+    const team = await makeTeamWith([{ user: a }]);
+    await record(a.id, { total: 42n });
+    const admin = await makeUser({ role: "admin" });
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    const out = await dailyTotals(prisma, admin, range, { scope });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(42);
+  });
+
+  it("team-scope toolBreakdown + modelBreakdown scope correctly", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    const outsider = await makeUser();
+    const team = await makeTeamWith([{ user: a }, { user: b }]);
+    await record(a.id, { tool: "claude_code", model: "claude-opus-4-7", total: 10n });
+    await record(b.id, { tool: "codex", model: "gpt-5.4", total: 30n });
+    await record(outsider.id, { tool: "claude_code", model: "claude-opus-4-7", total: 999n });
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    const tools = await toolBreakdown(prisma, a, range, { scope });
+    const tsum = tools.reduce((s, t) => s + Number(t.total), 0);
+    expect(tsum).toBe(40);
+    const models = await modelBreakdown(prisma, a, range, { scope });
+    expect(models.find((m) => m.model === "claude-opus-4-7")?.total).toBe(10n);
+  });
+
+  it("team-scope ignores opts.userId override (security)", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    const team = await makeTeamWith([{ user: a }, { user: b }]);
+    await record(a.id, { total: 10n });
+    await record(b.id, { total: 20n });
+    const scope: MetricsScope = { type: "team", teamId: team.id };
+    const out = await dailyTotals(prisma, a, range, { scope, userId: "nonexistent-id" });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(30);
   });
 });

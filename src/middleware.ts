@@ -10,7 +10,11 @@ export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const res = NextResponse.next();
 
-  const isApp = pathname.startsWith("/dashboard") || pathname.startsWith("/admin");
+  const isApp =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/teams") ||
+    pathname.startsWith("/invite");
   if (!isApp) return res;
 
   let session: SessionData = {};
@@ -43,5 +47,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/teams/:path*", "/invite/:path*"],
 };
