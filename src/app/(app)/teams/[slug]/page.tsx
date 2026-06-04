@@ -77,7 +77,15 @@ export default async function TeamDashboardPage({
       <Card>
         <CardHeader><CardTitle>团队每日 Token 趋势</CardTitle></CardHeader>
         <CardContent>
-          <DailyTrendChart data={trend.map((p) => ({ date: p.date, total: Number(p.total) }))} />
+          <DailyTrendChart
+            data={trend.map((p) => ({
+              date: p.date,
+              input: Number(p.inputTokens),
+              output: Number(p.outputTokens),
+              cache: Number(p.cacheTokens),
+              total: Number(p.total),
+            }))}
+          />
         </CardContent>
       </Card>
 
@@ -85,13 +93,29 @@ export default async function TeamDashboardPage({
         <Card>
           <CardHeader><CardTitle>按工具</CardTitle></CardHeader>
           <CardContent>
-            <ToolBreakdownChart data={tools.map((t) => ({ tool: t.tool, total: Number(t.total) }))} />
+            <ToolBreakdownChart
+              data={tools.map((t) => ({
+                tool: t.tool,
+                input: Number(t.inputTokens),
+                output: Number(t.outputTokens),
+                cache: Number(t.cacheTokens),
+                total: Number(t.total),
+              }))}
+            />
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>按模型</CardTitle></CardHeader>
           <CardContent>
-            <ModelBreakdownChart data={models.map((m) => ({ model: m.model, total: Number(m.total) }))} />
+            <ModelBreakdownChart
+              data={models.map((m) => ({
+                model: m.model,
+                input: Number(m.inputTokens),
+                output: Number(m.outputTokens),
+                cache: Number(m.cacheTokens),
+                total: Number(m.total),
+              }))}
+            />
           </CardContent>
         </Card>
       </div>
@@ -101,8 +125,14 @@ export default async function TeamDashboardPage({
         <CardContent>
           <UserRankingTable
             data={ranking.map((r) => ({
-              userId: r.userId, name: r.name, email: r.email,
-              avatarUrl: r.avatarUrl, total: Number(r.total),
+              userId: r.userId,
+              name: r.name,
+              email: r.email,
+              avatarUrl: r.avatarUrl,
+              input: Number(r.inputTokens),
+              output: Number(r.outputTokens),
+              cache: Number(r.cacheTokens),
+              total: Number(r.total),
             }))}
           />
         </CardContent>

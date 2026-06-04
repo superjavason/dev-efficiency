@@ -2,13 +2,26 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { CATEGORY_COLORS, CATEGORY_LABELS } from "./categories";
 
 export interface RankingRow {
   userId: string;
   name: string;
   email: string;
   avatarUrl: string | null;
+  input: number;
+  output: number;
+  cache: number;
   total: number;
+}
+
+function Swatch({ color }: { color: string }) {
+  return (
+    <span
+      className="inline-block h-2 w-2 rounded-sm align-middle"
+      style={{ backgroundColor: color }}
+    />
+  );
 }
 
 export function UserRankingTable({ data }: { data: RankingRow[] }) {
@@ -18,7 +31,16 @@ export function UserRankingTable({ data }: { data: RankingRow[] }) {
         <TableRow>
           <TableHead className="w-12">#</TableHead>
           <TableHead>用户</TableHead>
-          <TableHead className="text-right">Token 总量</TableHead>
+          <TableHead className="text-right">
+            <Swatch color={CATEGORY_COLORS.input} /> {CATEGORY_LABELS.input}
+          </TableHead>
+          <TableHead className="text-right">
+            <Swatch color={CATEGORY_COLORS.output} /> {CATEGORY_LABELS.output}
+          </TableHead>
+          <TableHead className="text-right">
+            <Swatch color={CATEGORY_COLORS.cache} /> {CATEGORY_LABELS.cache}
+          </TableHead>
+          <TableHead className="text-right">Total</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -34,12 +56,23 @@ export function UserRankingTable({ data }: { data: RankingRow[] }) {
                 </div>
               </div>
             </TableCell>
-            <TableCell className="text-right tabular-nums">{row.total.toLocaleString()}</TableCell>
+            <TableCell className="text-right tabular-nums text-muted-foreground">
+              {row.input.toLocaleString()}
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-muted-foreground">
+              {row.output.toLocaleString()}
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-muted-foreground">
+              {row.cache.toLocaleString()}
+            </TableCell>
+            <TableCell className="text-right tabular-nums font-medium">
+              {row.total.toLocaleString()}
+            </TableCell>
           </TableRow>
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={3} className="text-center text-muted-foreground">
+            <TableCell colSpan={6} className="text-center text-muted-foreground">
               所选时段暂无数据
             </TableCell>
           </TableRow>

@@ -207,3 +207,73 @@ describe("metrics service team scope", () => {
     expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(30);
   });
 });
+
+describe("metrics token breakdown (input / output / cache)", () => {
+  beforeEach(resetDb);
+  afterAll(() => prisma.$disconnect());
+
+  async function recordWithBreakdown(userId: string, parts: { input: bigint; output: bigint; cacheCreation: bigint; cacheRead: bigint; date?: string; tool?: "claude_code" | "codex"; model?: string }) {
+    const total = parts.input + parts.output + parts.cacheCreation + parts.cacheRead;
+    return prisma.usageRecord.create({
+      data: {
+        userId,
+        date: new Date(`${parts.date ?? "2026-05-25"}T00:00:00.000Z`),
+        tool: parts.tool ?? "claude_code",
+        model: parts.model ?? "claude-opus-4-7",
+        project: "",
+        inputTokens: parts.input,
+        outputTokens: parts.output,
+        cacheCreationTokens: parts.cacheCreation,
+        cacheReadTokens: parts.cacheRead,
+        totalTokens: total,
+        sessionCount: 1,
+        messageCount: 1,
+        source: "auto",
+      },
+    });
+  }
+
+  it("dailyTotals returns inputTokens/outputTokens/cacheTokens summed per day", async () => {
+    const u = await makeUser();
+    await recordWithBreakdown(u.id, { input: 100n, output: 50n, cacheCreation: 10n, cacheRead: 90n });
+    const out = await dailyTotals(prisma, u, range, { scope: { type: "self" } });
+    expect(out).toHaveLength(1);
+    expect(out[0].inputTokens).toBe(100n);
+    expect(out[0].outputTokens).toBe(50n);
+    expect(out[0].cacheTokens).toBe(100n); // 10 + 90
+    expect(out[0].total).toBe(250n);
+  });
+
+  it("toolBreakdown returns breakdown per tool", async () => {
+    const u = await makeUser();
+    await recordWithBreakdown(u.id, { input: 10n, output: 5n, cacheCreation: 1n, cacheRead: 4n, tool: "claude_code" });
+    await recordWithBreakdown(u.id, { input: 20n, output: 10n, cacheCreation: 0n, cacheRead: 0n, tool: "codex" });
+    const out = await toolBreakdown(prisma, u, range, { scope: { type: "self" } });
+    const claude = out.find((t) => t.tool === "claude-code");
+    expect(claude?.inputTokens).toBe(10n);
+    expect(claude?.cacheTokens).toBe(5n);
+    const codex = out.find((t) => t.tool === "codex");
+    expect(codex?.cacheTokens).toBe(0n);
+  });
+
+  it("userRanking carries breakdown per user", async () => {
+    const admin = await makeUser({ role: "admin" });
+    const target = await makeUser();
+    await recordWithBreakdown(target.id, { input: 7n, output: 8n, cacheCreation: 2n, cacheRead: 3n });
+    const out = await userRanking(prisma, admin, range, { scope: { type: "self" } });
+    const row = out.find((r) => r.userId === target.id);
+    expect(row?.inputTokens).toBe(7n);
+    expect(row?.outputTokens).toBe(8n);
+    expect(row?.cacheTokens).toBe(5n);
+    expect(row?.total).toBe(20n);
+  });
+
+  it("modelBreakdown sums cacheCreation + cacheRead into cacheTokens", async () => {
+    const u = await makeUser();
+    await recordWithBreakdown(u.id, { input: 0n, output: 0n, cacheCreation: 100n, cacheRead: 0n, model: "m-a" });
+    await recordWithBreakdown(u.id, { input: 0n, output: 0n, cacheCreation: 0n, cacheRead: 200n, model: "m-b" });
+    const out = await modelBreakdown(prisma, u, range, { scope: { type: "self" } });
+    expect(out.find((m) => m.model === "m-a")?.cacheTokens).toBe(100n);
+    expect(out.find((m) => m.model === "m-b")?.cacheTokens).toBe(200n);
+  });
+});

@@ -66,9 +66,44 @@ function whereClauseFor(range: DateRange, userIds: string[] | null) {
   return base;
 }
 
-export interface DailyPoint {
-  date: string;
+/**
+ * Token-category breakdown returned alongside `total` so charts can stack
+ * the three components (input / output / cache).
+ * `cacheTokens` = cacheCreationTokens + cacheReadTokens (these are bucketed
+ * together because cache_creation is the small first-write cost paired
+ * with the recurring cache_read savings).
+ */
+export interface TokenBreakdown {
+  inputTokens: bigint;
+  outputTokens: bigint;
+  cacheTokens: bigint;
   total: bigint;
+}
+
+const TOKEN_SUM_SELECT = {
+  inputTokens: true,
+  outputTokens: true,
+  cacheCreationTokens: true,
+  cacheReadTokens: true,
+  totalTokens: true,
+} as const;
+
+function projectSum(s: {
+  inputTokens: bigint | null;
+  outputTokens: bigint | null;
+  cacheCreationTokens: bigint | null;
+  cacheReadTokens: bigint | null;
+  totalTokens: bigint | null;
+}): TokenBreakdown {
+  const input = s.inputTokens ?? 0n;
+  const output = s.outputTokens ?? 0n;
+  const cache = (s.cacheCreationTokens ?? 0n) + (s.cacheReadTokens ?? 0n);
+  const total = s.totalTokens ?? 0n;
+  return { inputTokens: input, outputTokens: output, cacheTokens: cache, total };
+}
+
+export interface DailyPoint extends TokenBreakdown {
+  date: string;
 }
 
 export async function dailyTotals(
@@ -81,21 +116,20 @@ export async function dailyTotals(
   const rows = await prisma.usageRecord.groupBy({
     by: ["date"],
     where: whereClauseFor(range, userIds),
-    _sum: { totalTokens: true },
+    _sum: TOKEN_SUM_SELECT,
     orderBy: { date: "asc" },
   });
   return rows.map((r) => ({
     date: r.date.toISOString().slice(0, 10),
-    total: r._sum.totalTokens ?? 0n,
+    ...projectSum(r._sum),
   }));
 }
 
-export interface UserRankingRow {
+export interface UserRankingRow extends TokenBreakdown {
   userId: string;
   name: string;
   email: string;
   avatarUrl: string | null;
-  total: bigint;
 }
 
 export async function userRanking(
@@ -112,7 +146,7 @@ export async function userRanking(
   const grouped = await prisma.usageRecord.groupBy({
     by: ["userId"],
     where: whereClauseFor(range, userIds),
-    _sum: { totalTokens: true },
+    _sum: TOKEN_SUM_SELECT,
   });
   if (grouped.length === 0) return [];
 
@@ -128,14 +162,13 @@ export async function userRanking(
       name: byId.get(g.userId)?.name ?? "(unknown)",
       email: byId.get(g.userId)?.email ?? "",
       avatarUrl: byId.get(g.userId)?.avatarUrl ?? null,
-      total: g._sum.totalTokens ?? 0n,
+      ...projectSum(g._sum),
     }))
     .sort((a, b) => (b.total > a.total ? 1 : b.total < a.total ? -1 : 0));
 }
 
-export interface ToolPoint {
+export interface ToolPoint extends TokenBreakdown {
   tool: ApiTool;
-  total: bigint;
 }
 
 export async function toolBreakdown(
@@ -148,17 +181,16 @@ export async function toolBreakdown(
   const rows = await prisma.usageRecord.groupBy({
     by: ["tool"],
     where: whereClauseFor(range, userIds),
-    _sum: { totalTokens: true },
+    _sum: TOKEN_SUM_SELECT,
   });
   return rows.map((r) => ({
     tool: toolToApi(r.tool),
-    total: r._sum.totalTokens ?? 0n,
+    ...projectSum(r._sum),
   }));
 }
 
-export interface ModelPoint {
+export interface ModelPoint extends TokenBreakdown {
   model: string;
-  total: bigint;
 }
 
 export async function modelBreakdown(
@@ -171,11 +203,11 @@ export async function modelBreakdown(
   const rows = await prisma.usageRecord.groupBy({
     by: ["model"],
     where: whereClauseFor(range, userIds),
-    _sum: { totalTokens: true },
+    _sum: TOKEN_SUM_SELECT,
     orderBy: { _sum: { totalTokens: "desc" } },
   });
   return rows.map((r) => ({
     model: r.model,
-    total: r._sum.totalTokens ?? 0n,
+    ...projectSum(r._sum),
   }));
 }
