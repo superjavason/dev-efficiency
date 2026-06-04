@@ -6,7 +6,7 @@ import type { RegisterInput } from "@/lib/validation/auth";
 export class AuthError extends Error {
   constructor(
     message: string,
-    public code: "DUPLICATE_EMAIL" | "BAD_INVITE" | "NOT_FOUND",
+    public code: "DUPLICATE_EMAIL",
   ) {
     super(message);
     this.name = "AuthError";
@@ -15,7 +15,7 @@ export class AuthError extends Error {
 
 export interface RegisterResult {
   user: User;
-  token: string | null;
+  token: string;
 }
 
 async function issueTokenFor(
@@ -37,21 +37,6 @@ export async function registerUser(
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) throw new AuthError("email already registered", "DUPLICATE_EMAIL");
 
-  let approveImmediately = false;
-  let inviteId: string | null = null;
-
-  if (input.inviteCode) {
-    const code = await prisma.inviteCode.findUnique({ where: { code: input.inviteCode } });
-    const valid =
-      code &&
-      !code.usedById &&
-      (!code.expiresAt || code.expiresAt > new Date());
-    if (!valid) throw new AuthError("invalid or used invite code", "BAD_INVITE");
-    approveImmediately = true;
-    inviteId = code!.id;
-  }
-
-  // Hash before opening the transaction so argon2 doesn't hold the tx open.
   const passwordHash = await hashPassword(input.password);
 
   return prisma.$transaction(async (tx) => {
@@ -60,37 +45,11 @@ export async function registerUser(
         email: input.email,
         name: input.name,
         passwordHash,
-        status: approveImmediately ? "approved" : "pending",
+        status: "approved",
       },
     });
-
-    let token: string | null = null;
-    if (approveImmediately) {
-      await tx.inviteCode.update({
-        where: { id: inviteId! },
-        data: { usedById: user.id },
-      });
-      token = await issueTokenFor(tx, user.id);
-    }
-
+    const token = await issueTokenFor(tx, user.id);
     return { user, token };
-  });
-}
-
-export async function approveUser(
-  prisma: PrismaClient,
-  userId: string,
-): Promise<{ user: User; token: string }> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new AuthError("user not found", "NOT_FOUND");
-
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.user.update({
-      where: { id: userId },
-      data: { status: "approved" },
-    });
-    const token = await issueTokenFor(tx, userId);
-    return { user: updated, token };
   });
 }
 
@@ -101,6 +60,7 @@ export async function authenticate(
 ): Promise<User | null> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return null;
+  if (!user.passwordHash) return null;
   if (!(await verifyPassword(user.passwordHash, password))) return null;
   return user;
 }

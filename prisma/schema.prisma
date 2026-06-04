@@ -40,19 +40,8 @@ model User {
 
   tokens         AuthToken[]
   usageRecords   UsageRecord[]
-  invitesCreated InviteCode[] @relation("InviteCreatedBy")
-  inviteUsed     InviteCode?  @relation("InviteUsedBy")
-}
-
-model InviteCode {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  createdById String
-  createdBy   User      @relation("InviteCreatedBy", fields: [createdById], references: [id])
-  usedById    String?   @unique
-  usedBy      User?     @relation("InviteUsedBy", fields: [usedById], references: [id])
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+  avatarUrl    String?
+  githubId     String?    @unique
 }
 
 model AuthToken {
