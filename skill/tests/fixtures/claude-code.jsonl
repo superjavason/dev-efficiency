@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user"},"timestamp":"2026-05-25T02:00:00.000Z","sessionId":"s-aaa","cwd":"/Users/me/repo-a"}
+{"type":"assistant","timestamp":"2026-05-25T02:00:05.000Z","sessionId":"s-aaa","cwd":"/Users/me/repo-a","message":{"model":"claude-opus-4-7","usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":5,"cache_read_input_tokens":7}}}
+{"type":"assistant","timestamp":"2026-05-25T02:00:30.000Z","sessionId":"s-aaa","cwd":"/Users/me/repo-a","message":{"model":"claude-opus-4-7","usage":{"input_tokens":50,"output_tokens":80,"cache_creation_input_tokens":0,"cache_read_input_tokens":12}}}
+{"type":"assistant","timestamp":"2026-05-25T03:00:00.000Z","sessionId":"s-bbb","cwd":"/Users/me/repo-b","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":3,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+{"type":"assistant","timestamp":"2026-05-26T05:00:00.000Z","sessionId":"s-ccc","cwd":"/Users/me/repo-a","message":{"model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}

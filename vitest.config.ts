@@ -8,6 +8,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup/env.ts"],      // 每个 worker 都加载 .env.test
     fileParallelism: false,
     env: { NODE_ENV: "test" },
+    exclude: ["**/node_modules/**", "**/dist/**", "skill/**"],
   },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
