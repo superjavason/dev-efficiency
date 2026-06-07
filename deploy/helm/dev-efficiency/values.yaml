@@ -43,6 +43,12 @@ database:
   external:
     url: ""                 # 如 postgresql://user:pass@host:5432/db?schema=public
 
+# 迁移/seed Job 配置
+migrate:
+  # wait-for-db initContainer 镜像（需含 pg_isready）。外部库环境若该镜像不可拉取，
+  # 可替换为任意自带 pg_isready 的镜像。
+  waitForDbImage: postgres:16
+
 # 集群内 PostgreSQL（postgres.deploy=true 时启用）
 postgres:
   deploy: true

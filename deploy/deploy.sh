@@ -78,6 +78,15 @@ if [[ -n "$VALUES_FILE" ]]; then
 fi
 
 run helm "${HELM_ARGS[@]}"
-run kubectl rollout status "deployment/${RELEASE}" -n "$NAMESPACE" --timeout=300s
+
+# Mirror the chart's "dev-efficiency.fullname" helper: the Deployment is named
+# after the release unless the release name already contains the chart name,
+# in which case the chart name is appended.
+if [[ "$RELEASE" == *dev-efficiency* ]]; then
+  DEPLOY_NAME="$RELEASE"
+else
+  DEPLOY_NAME="${RELEASE}-dev-efficiency"
+fi
+run kubectl rollout status "deployment/${DEPLOY_NAME}" -n "$NAMESPACE" --timeout=300s
 
 echo "✅ 部署完成：${IMAGE} → ns/${NAMESPACE} release/${RELEASE}"
