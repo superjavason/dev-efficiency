@@ -1,0 +1,43 @@
+# 生产覆盖示例。复制后填入真实值，用 deploy.sh --values 引用。
+# 切勿把真实密钥提交进 git。
+
+image:
+  repository: ghcr.io/your-org/dev-efficiency
+  pullPolicy: IfNotPresent
+  # pullSecrets:
+  #   - name: ghcr-cred
+
+replicaCount: 2
+
+app:
+  sessionSecret: ""            # 留空自动生成并在升级间复用；或填 ≥32 字符固定值
+  admin:
+    email: admin@your-org.com
+    password: "change-me-please"
+    name: "Admin"
+  github:
+    enabled: false
+
+# 生产推荐外部托管库：
+# postgres:
+#   deploy: false
+# database:
+#   external:
+#     url: postgresql://user:pass@your-db-host:5432/dev_efficiency?schema=public
+
+postgres:
+  deploy: true
+  storage:
+    size: 20Gi
+    storageClass: ""           # 填集群的持久化 StorageClass
+
+ingress:
+  host: dev-efficiency.your-org.com
+  className: nginx
+
+tls:
+  mode: certManager
+  certManager:
+    createClusterIssuer: true
+    email: ops@your-org.com
+    acmeServer: https://acme-v02.api.letsencrypt.org/directory
