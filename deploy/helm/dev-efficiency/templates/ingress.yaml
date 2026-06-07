@@ -1,0 +1,31 @@
+{{- if .Values.ingress.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "dev-efficiency.fullname" . }}
+  labels:
+    {{- include "dev-efficiency.labels" . | nindent 4 }}
+  annotations:
+    {{- if eq .Values.tls.mode "certManager" }}
+    cert-manager.io/cluster-issuer: {{ .Values.tls.certManager.issuerName | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if ne .Values.tls.mode "disabled" }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ if eq .Values.tls.mode "existingSecret" }}{{ required "tls.existingSecret is required when tls.mode=existingSecret" .Values.tls.existingSecret }}{{ else }}{{ .Values.tls.secretName }}{{ end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "dev-efficiency.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

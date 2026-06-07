@@ -1,0 +1,75 @@
+# 命名覆盖（一般留空）
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ""            # 必填，如 ghcr.io/org/dev-efficiency（由 deploy.sh 注入）
+  tag: ""                   # 由 deploy.sh 注入（默认 git short sha）
+  pullPolicy: IfNotPresent
+  pullSecrets: []           # 如 [{name: my-regcred}]
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  name: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+service:
+  port: 3000
+
+# 应用敏感/业务配置
+app:
+  sessionSecret: ""         # 留空则首次安装生成、升级复用（≥32 字符）
+  admin:
+    email: ""
+    password: ""
+    name: "Admin"
+  github:
+    enabled: false
+    clientId: ""
+    clientSecret: ""
+    redirectUri: ""
+
+# 数据库：postgres.deploy=false 时用外部库
+database:
+  external:
+    url: ""                 # 如 postgresql://user:pass@host:5432/db?schema=public
+
+# 迁移/seed Job 配置
+migrate:
+  # wait-for-db initContainer 镜像（需含 pg_isready）。外部库环境若该镜像不可拉取，
+  # 可替换为任意自带 pg_isready 的镜像。
+  waitForDbImage: postgres:16
+
+# 集群内 PostgreSQL（postgres.deploy=true 时启用）
+postgres:
+  deploy: true
+  image: postgres:16
+  user: devuser
+  password: ""              # 留空则生成/复用
+  db: dev_efficiency
+  storage:
+    size: 10Gi
+    storageClass: ""        # 留空用集群默认 StorageClass
+
+ingress:
+  host: ""                  # 必填，如 dev-efficiency.example.com
+  className: nginx
+
+tls:
+  mode: certManager         # certManager | existingSecret | disabled
+  secretName: dev-efficiency-tls
+  existingSecret: ""        # mode=existingSecret 时填
+  certManager:
+    createClusterIssuer: true
+    issuerName: dev-efficiency-letsencrypt
+    email: ""               # createClusterIssuer=true 时必填
+    acmeServer: https://acme-v02.api.letsencrypt.org/directory

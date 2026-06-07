@@ -1,0 +1,22 @@
+dev-efficiency 已部署到 namespace「{{ .Release.Namespace }}」，release「{{ .Release.Name }}」。
+
+1) 查看应用滚动状态：
+   kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "dev-efficiency.fullname" . }}
+
+2) 查看迁移 Job 日志（如首次失败排查）：
+   kubectl -n {{ .Release.Namespace }} logs job/{{ include "dev-efficiency.fullname" . }}-migrate
+
+{{- if .Values.ingress.host }}
+3) 访问地址：
+   {{ if ne .Values.tls.mode "disabled" }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}
+{{- if eq .Values.tls.mode "certManager" }}
+
+   TLS 证书由 cert-manager 异步签发，观察：
+   kubectl -n {{ .Release.Namespace }} get certificate
+{{- end }}
+{{- else }}
+3) 未配置 ingress.host，使用 port-forward 本地访问：
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "dev-efficiency.fullname" . }} 3000:{{ .Values.service.port }}
+{{- end }}
+
+管理员账号：{{ .Values.app.admin.email | default "(未设置 app.admin.email，seed 已跳过)" }}

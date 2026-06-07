@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "dev-efficiency.fullname" . }}-migrate
+  labels:
+    {{- include "dev-efficiency.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "dev-efficiency.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "dev-efficiency.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-db
+          image: {{ .Values.migrate.waitForDbImage }}
+          command:
+            - sh
+            - -c
+            - 'until pg_isready -d "$DATABASE_URL"; do echo "waiting for database..."; sleep 2; done'
+          envFrom:
+            - secretRef:
+                name: {{ include "dev-efficiency.fullname" . }}-env
+      containers:
+        - name: migrate
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - 'pnpm prisma migrate deploy && pnpm db:seed'
+          envFrom:
+            - secretRef:
+                name: {{ include "dev-efficiency.fullname" . }}-env
+            - configMapRef:
+                name: {{ include "dev-efficiency.fullname" . }}-config
