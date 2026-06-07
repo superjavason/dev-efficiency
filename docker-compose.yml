@@ -17,6 +17,7 @@ services:
   app:
     restart: unless-stopped
     build: .
+    command: ["sh", "-c", "pnpm prisma migrate deploy && pnpm db:seed && pnpm start"]
     depends_on:
       db:
         condition: service_healthy
