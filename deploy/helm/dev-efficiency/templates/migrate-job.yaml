@@ -29,7 +29,7 @@ spec:
           command:
             - sh
             - -c
-            - 'until pg_isready -d "$DATABASE_URL"; do echo "waiting for database..."; sleep 2; done'
+            - 'DB="${DATABASE_URL%%\?*}"; until pg_isready -d "$DB"; do echo "waiting for database..."; sleep 2; done'
           envFrom:
             - secretRef:
                 name: {{ include "dev-efficiency.fullname" . }}-env
