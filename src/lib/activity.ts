@@ -69,3 +69,23 @@ export function computeStreaks(
   return { currentStreak, longestStreak, activeDays };
 }
 
+// Three quartile cut points (p25, p50, p75) of active days' totals → 4 non-zero levels.
+export function computeThresholds(days: DayTotal[]): number[] {
+  const totals = days
+    .filter((x) => x.total > 0)
+    .map((x) => x.total)
+    .sort((a, b) => a - b);
+  if (totals.length === 0) return [1, 1, 1];
+  const q = (p: number) => totals[Math.floor((totals.length - 1) * p)];
+  return [q(0.25), q(0.5), q(0.75)];
+}
+
+export function bucketLevel(total: number, thresholds: number[]): 0 | 1 | 2 | 3 | 4 {
+  if (total <= 0) return 0;
+  let level = 1;
+  for (const t of thresholds) {
+    if (total >= t) level += 1;
+  }
+  return Math.min(level, 4) as 0 | 1 | 2 | 3 | 4;
+}
+
