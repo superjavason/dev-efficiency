@@ -1,6 +1,12 @@
 import type { PrismaClient, Tool, User } from "@prisma/client";
 import { toolToApi, type ApiTool } from "@/lib/tool";
 import type { DateRange } from "@/lib/range";
+import {
+  computeStreaks,
+  buildHeatmap,
+  type DayTotal,
+  type Heatmap,
+} from "@/lib/activity";
 
 export class MetricsAuthError extends Error {
   constructor(message: string) {
@@ -210,4 +216,55 @@ export async function modelBreakdown(
     model: r.model,
     ...projectSum(r._sum),
   }));
+}
+
+export interface ProfileActivity {
+  stats: {
+    cumulativeTotal: number;
+    peakDay: number;
+    activeDays: number;
+    currentStreak: number;
+    longestStreak: number;
+  };
+  heatmap: Heatmap;
+}
+
+// Personal activity summary (lifetime stats + a 12-month heatmap) for the dashboard
+// profile block. Scope handling mirrors the other metrics functions via effectiveScope:
+// a member is silently clamped to their own data, a team scope spans members, and an
+// admin with self-scope and no `userId` resolves to *all users* (null filter). For an
+// admin's own profile, pass `userId: viewer.id` explicitly.
+export async function profileActivity(
+  prisma: PrismaClient,
+  viewer: User,
+  opts: { scope: MetricsScope; userId?: string | null; today?: string },
+): Promise<ProfileActivity> {
+  const userIds = await effectiveScope(prisma, viewer, opts.scope, opts.userId);
+  const where: { userId?: { in: string[] } } = {};
+  if (userIds) {
+    where.userId = { in: userIds.length === 0 ? ["__no_match__"] : userIds };
+  }
+
+  const rows = await prisma.usageRecord.groupBy({
+    by: ["date"],
+    where,
+    _sum: { totalTokens: true },
+    orderBy: { date: "asc" },
+  });
+
+  const days: DayTotal[] = rows.map((r) => ({
+    date: r.date.toISOString().slice(0, 10),
+    total: Number(r._sum.totalTokens ?? 0n),
+  }));
+
+  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  const cumulativeTotal = days.reduce((s, x) => s + x.total, 0);
+  const peakDay = days.reduce((m, x) => Math.max(m, x.total), 0);
+  const { currentStreak, longestStreak, activeDays } = computeStreaks(days, today);
+  const heatmap = buildHeatmap(days, today);
+
+  return {
+    stats: { cumulativeTotal, peakDay, activeDays, currentStreak, longestStreak },
+    heatmap,
+  };
 }

@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { parseRange } from "@/lib/range";
-import { dailyTotals, toolBreakdown, modelBreakdown } from "@/lib/services/metrics";
+import { dailyTotals, toolBreakdown, modelBreakdown, profileActivity } from "@/lib/services/metrics";
 import { listTokensFor } from "@/lib/services/tokens";
+import { ProfileSummary } from "@/components/ProfileSummary";
 import { DailyTrendChart } from "@/components/charts/DailyTrendChart";
 import { ToolBreakdownChart } from "@/components/charts/ToolBreakdownChart";
 import { ModelBreakdownChart } from "@/components/charts/ModelBreakdownChart";
@@ -31,15 +32,18 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const range = parseRange(sp);
 
-  const [trend, tools, models, tokens] = await Promise.all([
+  const [trend, tools, models, tokens, activity] = await Promise.all([
     dailyTotals(prisma, user, range, { scope: { type: "self" } }),
     toolBreakdown(prisma, user, range, { scope: { type: "self" } }),
     modelBreakdown(prisma, user, range, { scope: { type: "self" } }),
     listTokensFor(prisma, user, user.id),
+    profileActivity(prisma, user, { scope: { type: "self" } }),
   ]);
 
   return (
     <div className="space-y-6">
+      <ProfileSummary name={user.name} avatarUrl={user.avatarUrl} activity={activity} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">个人仪表盘</h1>
         <DateRangePicker />

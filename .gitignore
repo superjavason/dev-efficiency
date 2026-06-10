@@ -8,3 +8,4 @@ dist/
 .DS_Store
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+docker-compose.override.yml
