@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeStreaks, computeThresholds, bucketLevel, type DayTotal } from "@/lib/activity";
+import { computeStreaks, computeThresholds, bucketLevel, buildHeatmap, type DayTotal } from "@/lib/activity";
 
 const d = (date: string, total: number): DayTotal => ({ date, total });
 
@@ -90,5 +90,48 @@ describe("computeThresholds + bucketLevel", () => {
     expect(th).toEqual([100, 100, 100]);
     expect(bucketLevel(99, th)).toBe(1);
     expect(bucketLevel(100, th)).toBe(4);
+  });
+});
+
+describe("buildHeatmap", () => {
+  const today = "2026-06-10"; // a Wednesday (UTC getUTCDay() === 3)
+
+  it("produces 53 week-columns of 7 rows each", () => {
+    const hm = buildHeatmap([], today);
+    expect(hm.weeks.length).toBe(53);
+    for (const col of hm.weeks) expect(col.length).toBe(7);
+  });
+
+  it("starts the grid on a Sunday and ends with today in the last column", () => {
+    const hm = buildHeatmap([], today);
+    expect(hm.weeks[0][0]?.date).toBe("2025-06-08"); // Sunday on/before today-364
+    const last = hm.weeks[hm.weeks.length - 1];
+    const dates = last.filter(Boolean).map((c) => c!.date);
+    expect(dates).toContain(today);
+  });
+
+  it("renders days after today as null in the trailing week", () => {
+    const hm = buildHeatmap([], today);
+    const last = hm.weeks[hm.weeks.length - 1];
+    // today is Wednesday (row 3); Thu/Fri/Sat (rows 4,5,6) are in the future
+    expect(last[4]).toBeNull();
+    expect(last[5]).toBeNull();
+    expect(last[6]).toBeNull();
+  });
+
+  it("places a known active date in the correct cell with a non-zero level", () => {
+    const hm = buildHeatmap([{ date: "2026-06-10", total: 100 }], today);
+    const last = hm.weeks[hm.weeks.length - 1];
+    expect(last[3]?.date).toBe("2026-06-10"); // Wednesday row
+    expect(last[3]?.total).toBe(100);
+    expect(last[3]?.level).toBeGreaterThan(0);
+  });
+
+  it("emits month labels in column order", () => {
+    const hm = buildHeatmap([], today);
+    expect(hm.monthLabels.length).toBeGreaterThan(0);
+    expect(hm.monthLabels[0].label).toMatch(/月$/);
+    const idxs = hm.monthLabels.map((m) => m.weekIndex);
+    expect([...idxs].sort((a, b) => a - b)).toEqual(idxs);
   });
 });

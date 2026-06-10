@@ -89,3 +89,46 @@ export function bucketLevel(total: number, thresholds: number[]): 0 | 1 | 2 | 3 
   return Math.min(level, 4) as 0 | 1 | 2 | 3 | 4;
 }
 
+export function buildHeatmap(days: DayTotal[], today: string): Heatmap {
+  const totalByDate = new Map(days.map((x) => [x.date, x.total]));
+
+  // Window: today-364 .. today, with the start aligned back to its Sunday.
+  const windowStart = addDays(today, -364);
+  const start = addDays(windowStart, -dayOfWeek(windowStart));
+
+  // Thresholds computed over the in-window day totals (the cells actually shown).
+  const inWindow: DayTotal[] = [];
+  for (let cur = start; diffDays(cur, today) >= 0; cur = addDays(cur, 1)) {
+    inWindow.push({ date: cur, total: totalByDate.get(cur) ?? 0 });
+  }
+  const thresholds = computeThresholds(inWindow);
+
+  const weeks: (HeatmapCell | null)[][] = [];
+  const monthLabels: { label: string; weekIndex: number }[] = [];
+  let seenMonth = "";
+  let weekIndex = 0;
+
+  for (let colStart = start; diffDays(colStart, today) >= 0; colStart = addDays(colStart, 7)) {
+    const col: (HeatmapCell | null)[] = [];
+    for (let row = 0; row < 7; row++) {
+      const date = addDays(colStart, row);
+      if (date > today) {
+        // future day in the trailing partial week (ISO date strings compare chronologically)
+        col.push(null);
+      } else {
+        const total = totalByDate.get(date) ?? 0;
+        col.push({ date, total, level: bucketLevel(total, thresholds) });
+      }
+    }
+    const label = `${parseDay(colStart).getUTCMonth() + 1}月`;
+    if (label !== seenMonth) {
+      monthLabels.push({ label, weekIndex });
+      seenMonth = label;
+    }
+    weeks.push(col);
+    weekIndex += 1;
+  }
+
+  return { weeks, monthLabels };
+}
+
