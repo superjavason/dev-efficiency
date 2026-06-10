@@ -1,4 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ActivityHeatmap } from "@/components/charts/ActivityHeatmap";
 import { formatCompactCN } from "@/lib/format";
@@ -42,6 +48,7 @@ export function ProfileSummary({ name, avatarUrl, activity }: ProfileSummaryProp
       <Card>
         <CardHeader>
           <CardTitle>Token 活动</CardTitle>
+          <CardDescription>全部历史 · 最近 12 个月</CardDescription>
         </CardHeader>
         <CardContent>
           <ActivityHeatmap heatmap={heatmap} />
