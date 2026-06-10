@@ -24,6 +24,7 @@ describe("computeStreaks", () => {
     const r = computeStreaks([d("2026-06-09", 0), d("2026-06-10", 7)], "2026-06-10");
     expect(r.activeDays).toBe(1);
     expect(r.currentStreak).toBe(1);
+    expect(r.longestStreak).toBe(1);
   });
 
   it("current streak counts from yesterday when today is inactive", () => {
