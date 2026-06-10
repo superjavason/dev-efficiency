@@ -300,7 +300,7 @@ describe("buildHeatmap", () => {
 
   it("starts the grid on a Sunday and ends with today in the last column", () => {
     const hm = buildHeatmap([], today);
-    expect(hm.weeks[0][0]?.date).toBe("2025-06-15"); // Sunday on/before today-364
+    expect(hm.weeks[0][0]?.date).toBe("2025-06-08"); // Sunday on/before today-364
     const last = hm.weeks[hm.weeks.length - 1];
     const dates = last.filter(Boolean).map((c) => c!.date);
     expect(dates).toContain(today);
