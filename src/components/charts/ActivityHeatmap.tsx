@@ -17,6 +17,9 @@ export interface ActivityHeatmapProps {
 export function ActivityHeatmap({ heatmap }: ActivityHeatmapProps) {
   const { weeks, monthLabels } = heatmap;
   const labelByWeek = new Map(monthLabels.map((m) => [m.weekIndex, m.label]));
+  const columnsStyle = {
+    gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))`,
+  };
 
   return (
     <div className="space-y-2">
@@ -26,30 +29,31 @@ export function ActivityHeatmap({ heatmap }: ActivityHeatmapProps) {
         <span className="cursor-not-allowed text-muted-foreground/50">累计</span>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex gap-[3px]">
-          {weeks.map((col, ci) => (
-            <div key={ci} className="flex flex-col gap-[3px]">
-              {col.map((cell, ri) =>
-                cell === null ? (
-                  <div key={ri} className="h-[11px] w-[11px]" />
-                ) : (
-                  <div
-                    key={ri}
-                    className={`h-[11px] w-[11px] rounded-[2px] ${LEVEL_CLASS[cell.level]}`}
-                    title={`${cell.date} · ${cell.total.toLocaleString("en-US")} tokens`}
-                  />
-                ),
-              )}
-            </div>
-          ))}
+      <div>
+        <div
+          className="grid grid-flow-col gap-[3px]"
+          style={{ ...columnsStyle, gridTemplateRows: "repeat(7, 1fr)" }}
+        >
+          {weeks.map((col, ci) =>
+            col.map((cell, ri) =>
+              cell === null ? (
+                <div key={`${ci}-${ri}`} className="aspect-square" />
+              ) : (
+                <div
+                  key={`${ci}-${ri}`}
+                  className={`aspect-square rounded-[2px] ${LEVEL_CLASS[cell.level]}`}
+                  title={`${cell.date} · ${cell.total.toLocaleString("en-US")} tokens`}
+                />
+              ),
+            ),
+          )}
         </div>
 
-        <div className="mt-1 flex gap-[3px]">
+        <div className="mt-1 grid grid-flow-col gap-[3px]" style={columnsStyle}>
           {weeks.map((_, ci) => (
             <div
               key={ci}
-              className="w-[11px] overflow-visible whitespace-nowrap text-[10px] text-muted-foreground"
+              className="overflow-visible whitespace-nowrap text-[10px] text-muted-foreground"
             >
               {labelByWeek.has(ci) ? labelByWeek.get(ci) : ""}
             </div>

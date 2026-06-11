@@ -17,7 +17,7 @@ is a second workspace package with its own scripts and test config.
 
 ```bash
 pnpm install                 # installs root + skill deps
-docker compose up -d db      # local Postgres on host port 5433 (avoids 5432)
+docker compose up -d db      # local Postgres on host port 5432
 
 pnpm dev                     # Next dev server (localhost:3000)
 pnpm build                   # next build

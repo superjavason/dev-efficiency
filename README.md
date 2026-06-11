@@ -63,7 +63,7 @@ cp .env.example .env
 
 | 变量 | 说明 |
 |------|------|
-| `DATABASE_URL` | PostgreSQL 连接串（本地默认指向容器映射的 `5433` 端口） |
+| `DATABASE_URL` | PostgreSQL 连接串（本地默认指向容器映射的 `5432` 端口） |
 | `SESSION_SECRET` | iron-session 加密密钥，至少 32 字符 |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | 首次 seed 的管理员账号 |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_REDIRECT_URI` | GitHub OAuth 凭据（留空则禁用） |
@@ -72,7 +72,7 @@ cp .env.example .env
 ### 3. 启动数据库并初始化
 
 ```bash
-docker compose up -d db          # 本地 Postgres，宿主机端口 5433
+docker compose up -d db          # 本地 Postgres，宿主机端口 5432
 pnpm prisma:migrate              # 应用数据库迁移
 pnpm db:seed                     # 按 ADMIN_* 创建管理员账号
 ```
