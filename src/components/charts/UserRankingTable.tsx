@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -48,13 +49,16 @@ export function UserRankingTable({ data }: { data: RankingRow[] }) {
           <TableRow key={row.userId}>
             <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
             <TableCell>
-              <div className="flex items-center gap-2">
+              <Link
+                href={`/users/${row.userId}`}
+                className="group flex items-center gap-2"
+              >
                 <UserAvatar name={row.name} avatarUrl={row.avatarUrl} size={24} />
                 <div className="flex flex-col">
-                  <span>{row.name}</span>
+                  <span className="group-hover:underline">{row.name}</span>
                   <span className="text-xs text-muted-foreground">{row.email}</span>
                 </div>
-              </div>
+              </Link>
             </TableCell>
             <TableCell className="text-right tabular-nums text-muted-foreground">
               {row.input.toLocaleString()}
