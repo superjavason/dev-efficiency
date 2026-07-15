@@ -132,3 +132,17 @@ export function buildHeatmap(days: DayTotal[], today: string): Heatmap {
   return { weeks, monthLabels };
 }
 
+
+
+export interface WeeklyHeatmapCell {
+  weekLabel: string;
+  total: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+export function computeWeeklyThresholds(weeklyTotals: number[]): number[] {
+  const totals = weeklyTotals.filter((x) => x > 0).sort((a, b) => a - b);
+  if (totals.length === 0) return [1, 1, 1];
+  const q = (p: number) => totals[Math.floor((totals.length - 1) * p)];
+  return [q(0.25), q(0.5), q(0.75)];
+}
