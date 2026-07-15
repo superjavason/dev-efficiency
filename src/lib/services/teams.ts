@@ -49,6 +49,25 @@ async function membershipOf(prisma: PrismaClient, teamId: string, userId: string
   });
 }
 
+/**
+ * True when the two users are both members of at least one common team.
+ * Used by metrics user-scope authorization (see services/metrics.ts).
+ */
+export async function sharesTeam(
+  prisma: PrismaClient,
+  userIdA: string,
+  userIdB: string,
+): Promise<boolean> {
+  const m = await prisma.teamMember.findFirst({
+    where: {
+      userId: userIdA,
+      team: { members: { some: { userId: userIdB } } },
+    },
+    select: { teamId: true },
+  });
+  return m !== null;
+}
+
 async function assertOwner(prisma: PrismaClient, viewer: User, teamId: string): Promise<void> {
   if (isPlatformAdmin(viewer)) return;
   const m = await membershipOf(prisma, teamId, viewer.id);
