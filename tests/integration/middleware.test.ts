@@ -44,6 +44,21 @@ describe("middleware", () => {
     expect(res.status).toBe(200);
   });
 
+  it("redirects unauthenticated /users/some-id → /login", async () => {
+    const req = await withSession("http://t/users/some-id");
+    const res = await middleware(req);
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/login");
+    expect(loc).toContain("returnTo=%2Fusers%2Fsome-id");
+  });
+
+  it("allows authenticated member → /users/some-id", async () => {
+    const req = await withSession("http://t/users/some-id", { userId: "u1", role: "member" });
+    const res = await middleware(req);
+    expect(res.status).toBe(200);
+  });
+
   it("ignores non-app routes (no redirect to login from /login)", async () => {
     const req = await withSession("http://t/login");
     const res = await middleware(req);

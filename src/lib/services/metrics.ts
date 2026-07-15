@@ -1,5 +1,6 @@
 import type { PrismaClient, Tool, User } from "@prisma/client";
 import { toolToApi, type ApiTool } from "@/lib/tool";
+import { sharesTeam } from "@/lib/services/teams";
 import type { DateRange } from "@/lib/range";
 import {
   computeStreaks,
@@ -19,11 +20,14 @@ export class MetricsAuthError extends Error {
  * Query scope for metrics calls.
  * - `self`: existing behavior — member clamped to viewer.id; admin honors opts.userId or returns all users.
  * - `team`: aggregates across all current members of the team. Viewer must be a team member or platform admin.
- *   `opts.userId` is intentionally ignored for team scope (no per-user drill-down within team in v1).
+ *   `opts.userId` is intentionally ignored for team scope (no per-user drill-down within team scope).
+ * - `user`: single-user drill-down (profile page). Allowed when the target is the viewer
+ *   themselves, the viewer is a platform admin, or the two share at least one team.
  */
 export type MetricsScope =
   | { type: "self" }
-  | { type: "team"; teamId: string };
+  | { type: "team"; teamId: string }
+  | { type: "user"; userId: string };
 
 /**
  * Resolve the userId filter for a query. Returns null = "no filter" (admin self-scope, all users).
@@ -51,6 +55,15 @@ async function effectiveScope(
       select: { userId: true },
     });
     return members.map((m) => m.userId);
+  }
+  if (scope.type === "user") {
+    if (scope.userId !== viewer.id && viewer.role !== "admin") {
+      const shared = await sharesTeam(prisma, viewer.id, scope.userId);
+      if (!shared) {
+        throw new MetricsAuthError("forbidden: no shared team with target user");
+      }
+    }
+    return [scope.userId];
   }
   if (viewer.role === "admin") {
     return requestedUserId ? [requestedUserId] : null;

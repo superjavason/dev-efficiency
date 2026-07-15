@@ -14,6 +14,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/teams") ||
+    pathname.startsWith("/users") ||
     pathname.startsWith("/invite");
   if (!isApp) return res;
 
@@ -47,5 +48,11 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/teams/:path*", "/invite/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/teams/:path*",
+    "/users/:path*",
+    "/invite/:path*",
+  ],
 };

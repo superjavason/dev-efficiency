@@ -5,6 +5,7 @@ import {
   userRanking,
   toolBreakdown,
   modelBreakdown,
+  profileActivity,
   MetricsAuthError,
 } from "@/lib/services/metrics";
 import type { MetricsScope } from "@/lib/services/metrics";
@@ -275,5 +276,76 @@ describe("metrics token breakdown (input / output / cache)", () => {
     const out = await modelBreakdown(prisma, u, range, { scope: { type: "self" } });
     expect(out.find((m) => m.model === "m-a")?.cacheTokens).toBe(100n);
     expect(out.find((m) => m.model === "m-b")?.cacheTokens).toBe(200n);
+  });
+});
+
+describe("metrics service user scope (per-user drill-down)", () => {
+  beforeEach(resetDb);
+  afterAll(() => prisma.$disconnect());
+
+  async function makeTeamWith(userIds: string[]) {
+    const team = await prisma.team.create({
+      data: {
+        name: "T",
+        slug: `t-${Math.random().toString(36).slice(2, 8)}`,
+        createdById: userIds[0],
+      },
+    });
+    for (let i = 0; i < userIds.length; i++) {
+      await prisma.teamMember.create({
+        data: { teamId: team.id, userId: userIds[i], role: i === 0 ? "owner" : "member" },
+      });
+    }
+    return team;
+  }
+
+  it("a user can view their own data via user scope", async () => {
+    const me = await makeUser();
+    await record(me.id, { total: 10n });
+    const scope: MetricsScope = { type: "user", userId: me.id };
+    const out = await dailyTotals(prisma, me, range, { scope });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(10);
+  });
+
+  it("a teammate can view the target's data, and only the target's", async () => {
+    const viewer = await makeUser();
+    const target = await makeUser();
+    await makeTeamWith([viewer.id, target.id]);
+    await record(viewer.id, { total: 10n });
+    await record(target.id, { total: 77n });
+    const scope: MetricsScope = { type: "user", userId: target.id };
+    const out = await dailyTotals(prisma, viewer, range, { scope });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(77);
+  });
+
+  it("a non-teammate is rejected with MetricsAuthError", async () => {
+    const viewer = await makeUser();
+    const target = await makeUser();
+    await makeTeamWith([viewer.id]);
+    await makeTeamWith([target.id]);
+    await record(target.id, { total: 77n });
+    const scope: MetricsScope = { type: "user", userId: target.id };
+    await expect(dailyTotals(prisma, viewer, range, { scope })).rejects.toBeInstanceOf(
+      MetricsAuthError,
+    );
+  });
+
+  it("a platform admin can view any user via user scope", async () => {
+    const admin = await makeUser({ role: "admin" });
+    const target = await makeUser();
+    await record(target.id, { total: 42n });
+    const scope: MetricsScope = { type: "user", userId: target.id };
+    const out = await dailyTotals(prisma, admin, range, { scope });
+    expect(out.reduce((s, p) => s + Number(p.total), 0)).toBe(42);
+  });
+
+  it("profileActivity works with user scope for a teammate", async () => {
+    const viewer = await makeUser();
+    const target = await makeUser();
+    await makeTeamWith([viewer.id, target.id]);
+    await record(target.id, { date: "2026-05-25", total: 300n });
+    const scope: MetricsScope = { type: "user", userId: target.id };
+    const out = await profileActivity(prisma, viewer, { scope, today: "2026-05-26" });
+    expect(out.stats.cumulativeTotal).toBe(300);
   });
 });
